@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -11,6 +11,32 @@ import StarBorder from '@/components/reactbits/StarBorder/StarBorder';
 import SectionKicker from './SectionKicker';
 import { imageOf, LOCAL_LOGO, safeArray } from './homeUtils';
 
+// Menunda pemasangan sampai browser selesai dengan pekerjaan render awal.
+//
+// React.lazy mulai mengunduh chunk-nya begitu komponen dirender, jadi tanpa
+// penundaan ini three.js (720 KB) dan model .glb (1,4 MB) berebut bandwidth
+// dengan teks hero — elemen LCP halaman. Menundanya sampai idle membuat
+// konten utama tampil dulu, baru dekorasi 3D menyusul.
+const useDeferredMount = () => {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    // Hormati preferensi hemat data dan koneksi lambat: di sana model 3D
+    // dekoratif seharga 2 MB bukan pertukaran yang pantas.
+    const conn = navigator.connection;
+    if (conn?.saveData || /(^|-)2g$/.test(conn?.effectiveType || '')) return undefined;
+
+    const schedule = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 1200));
+    const cancel = window.cancelIdleCallback || window.clearTimeout;
+    const id = schedule(() => setReady(true), { timeout: 3000 });
+    return () => cancel(id);
+  }, []);
+
+  return ready;
+};
+
 const LightPillar = React.lazy(() => import('@/components/reactbits/LightPillar/LightPillar'));
 const ModelViewer = React.lazy(() => import('@/components/reactbits/ModelViewer/ModelViewer'));
 
@@ -22,6 +48,7 @@ const getQuality = () => {
 };
 
 const HeroSection = ({ content, currentSlide, setCurrentSlide, stats }) => {
+  const show3D = useDeferredMount();
   const model3dSettings = content?.model3dSettings || {};
   const autoRotate = model3dSettings.autoRotate === true;
   const autoRotateSpeed = autoRotate ? (model3dSettings.autoRotateSpeed || 0.34) : 0;
@@ -102,7 +129,7 @@ const HeroSection = ({ content, currentSlide, setCurrentSlide, stats }) => {
       <div className="home-hero__grain" aria-hidden="true" />
       <div className="home-hero__quran-model" aria-hidden="true">
         <Suspense fallback={null}>
-          <ModelViewer
+          {show3D && <ModelViewer
             url="/models/quran_3d_free.glb"
             width="100%"
             height="100%"
@@ -112,7 +139,7 @@ const HeroSection = ({ content, currentSlide, setCurrentSlide, stats }) => {
             modelPosition={[0, -0.01, 0]}
             modelRotation={modelRotation}
             autoRotateSpeed={autoRotateSpeed}
-          />
+          />}
         </Suspense>
       </div>
       <div className="home-hero__inner">

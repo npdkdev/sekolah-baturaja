@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -6,39 +6,58 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import HomePage from '@/pages/HomePage';
-import LoginPage from '@/pages/LoginPage';
-import DashboardPage from '@/pages/DashboardPage';
-import ProfilePage from '@/pages/ProfilePage';
-import RegistrationInfoPage from '@/pages/RegistrationInfoPage';
-import BrochurePage from '@/pages/BrochurePage';
-import ContactPage from '@/pages/ContactPage';
-import PaymentStatusPage from '@/pages/PaymentStatusPage';
+
+// Setiap halaman dipecah jadi chunk sendiri.
+//
+// Sebelumnya 30 halaman diimpor statis, jadi Vite menggabungkan seluruh
+// dashboard admin, panel manajemen, dan game ke satu bundle 3,4 MB yang
+// diunduh bahkan oleh pengunjung yang cuma membuka beranda. Lighthouse
+// melaporkan 3,3 MB di antaranya tidak terpakai.
+//
+// HomePage sengaja TIDAK di-lazy: itu elemen LCP untuk pengunjung pertama,
+// dan me-lazy-kannya menambah satu roundtrip tepat di jalur kritis.
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const RegistrationInfoPage = lazy(() => import('@/pages/RegistrationInfoPage'));
+const BrochurePage = lazy(() => import('@/pages/BrochurePage'));
+const ContactPage = lazy(() => import('@/pages/ContactPage'));
+const PaymentStatusPage = lazy(() => import('@/pages/PaymentStatusPage'));
+const NewsPage = lazy(() => import('@/pages/NewsPage'));
+const NewsDetailPage = lazy(() => import('@/pages/NewsDetailPage'));
+const AnnouncementPage = lazy(() => import('@/pages/AnnouncementPage'));
+const AnnouncementDetailPage = lazy(() => import('@/pages/AnnouncementDetailPage'));
+const QiroatiMethodPage = lazy(() => import('@/pages/QiroatiMethodPage'));
+const FacilitiesPage = lazy(() => import('@/pages/FacilitiesPage'));
+const ParentingPage = lazy(() => import('@/pages/ParentingPage'));
+const ParentingArticlePage = lazy(() => import('@/pages/ParentingArticlePage'));
+const ForumPage = lazy(() => import('@/pages/ForumPage'));
+const ForumTopicPage = lazy(() => import('@/pages/ForumTopicPage'));
+const EduMediaPage = lazy(() => import('@/pages/EduMediaPage'));
+const SystemPage = lazy(() => import('@/pages/SystemPage'));
+const WaliDiscussionPage = lazy(() => import('@/pages/WaliDiscussionPage'));
+const DigitalAttendancePage = lazy(() => import('@/pages/DigitalAttendancePage'));
+const TvDisplayPage = lazy(() => import('@/pages/TvDisplayPage'));
+const QuizHafalanPage = lazy(() => import('@/pages/QuizHafalanPage'));
+const GatchaGamePage = lazy(() => import('@/pages/GatchaGamePage'));
+const GalleryPage = lazy(() => import('@/pages/GalleryPage'));
+const RandomNamePage = lazy(() => import('@/pages/RandomNamePage'));
+const TopScorePage = lazy(() => import('@/pages/TopScorePage'));
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ScrollToTopButton from '@/components/ScrollToTopButton';
-import NewsPage from '@/pages/NewsPage';
-import NewsDetailPage from '@/pages/NewsDetailPage';
-import AnnouncementPage from '@/pages/AnnouncementPage';
-import AnnouncementDetailPage from '@/pages/AnnouncementDetailPage';
-import QiroatiMethodPage from '@/pages/QiroatiMethodPage';
-import FacilitiesPage from '@/pages/FacilitiesPage';
-import ParentingPage from '@/pages/ParentingPage';
-import ParentingArticlePage from '@/pages/ParentingArticlePage';
-import ForumPage from '@/pages/ForumPage';
-import ForumTopicPage from '@/pages/ForumTopicPage';
-import EduMediaPage from '@/pages/EduMediaPage';
-import SystemPage from '@/pages/SystemPage';
-import WaliDiscussionPage from '@/pages/WaliDiscussionPage';
-import DigitalAttendancePage from '@/pages/DigitalAttendancePage';
-import TvDisplayPage from '@/pages/TvDisplayPage';
-import QuizHafalanPage from '@/pages/QuizHafalanPage';
-import GatchaGamePage from '@/pages/GatchaGamePage';
-import GalleryPage from '@/pages/GalleryPage';
-import RandomNamePage from '@/pages/RandomNamePage';
-import TopScorePage from '@/pages/TopScorePage';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { publicFetch } from '@/lib/apiClient';
 import { enableDeferredFeatures, enableGameFeatures } from '@/lib/featureFlags';
+
+// Fallback rute. Sengaja minimal dan tanpa animasi: muncul hanya selama chunk
+// halaman diunduh, dan spinner yang berkedip sesaat justru terasa lebih lambat
+// daripada ruang kosong.
+const RouteFallback = () => (
+  <div className="min-h-[50vh] flex items-center justify-center" role="status" aria-live="polite">
+    <span className="sr-only">Memuat halaman…</span>
+  </div>
+);
 
 const RouteLogger = () => {
   const location = useLocation();
@@ -143,6 +162,9 @@ function App() {
           <Router>
             <RouteLogger />
             <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300">
+              {/* Satu Suspense di sekeliling seluruh pohon rute: setiap halaman
+                  kini chunk terpisah, jadi ada jeda unduh saat berpindah rute. */}
+              <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/absensi-digital" element={<ProtectedRoute allowedRoles={operationalDisplayRoles}><DigitalAttendancePage /></ProtectedRoute>} />
                 <Route path="/tv-display-mode" element={<ProtectedRoute allowedRoles={operationalDisplayRoles}><TvDisplayPage /></ProtectedRoute>} />
@@ -204,6 +226,7 @@ function App() {
                   </>
                 } />
               </Routes>
+              </Suspense>
               <Toaster />
               <ScrollToTopButton />
             </div>

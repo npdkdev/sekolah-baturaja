@@ -6,7 +6,7 @@ import { Environment, useGLTF } from '@react-three/drei';
 // Peta preset -> berkas HDRI lokal di public/hdri/. Tambahkan entri baru di
 // sini (dan unduh berkasnya) kalau butuh preset lain.
 const ENVIRONMENT_FILES = {
-  studio: '/hdri/studio_small_03_1k.hdr',
+  studio: '/hdri/studio_small_03_512.hdr',
 };
 import * as THREE from 'three';
 import './ModelViewer.css';

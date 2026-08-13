@@ -119,6 +119,31 @@ func TestSPA_RejectsTraversal(t *testing.T) {
 
 // TestNewSPA_NilWithoutIndex pins the development path: with no build output the
 // server must run API-only rather than failing to start.
+// TestCacheControlTiers pins the three policies apart. Getting these wrong is
+// silent: too loose pins users to a stale build, too tight re-downloads
+// megabytes on every visit.
+func TestCacheControlTiers(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/assets/index-abc123.js", "public, max-age=31536000, immutable"},
+		{"/assets/index-abc123.css", "public, max-age=31536000, immutable"},
+		{"/institution/hero.webp", "public, max-age=86400, stale-while-revalidate=604800"},
+		{"/models/quran_3d_free.glb", "public, max-age=86400, stale-while-revalidate=604800"},
+		{"/hdri/studio_small_03_1k.hdr", "public, max-age=86400, stale-while-revalidate=604800"},
+		{"/favicon.ico", "public, max-age=86400, stale-while-revalidate=604800"},
+		{"/index.html", "no-cache"},
+		{"/dashboard", "no-cache"},
+		{"/loading-screen.css", "no-cache"},
+	}
+	for _, tt := range tests {
+		if got := cacheControlFor(tt.path); got != tt.want {
+			t.Errorf("cacheControlFor(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestNewSPA_NilWithoutIndex(t *testing.T) {
 	if spa := NewSPA(t.TempDir()); spa != nil {
 		t.Error("NewSPA should return nil when index.html is absent")

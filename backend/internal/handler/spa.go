@@ -45,11 +45,7 @@ func (s *SPA) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if name, ok := s.resolve(r.URL.Path); ok {
-		// Vite fingerprints asset filenames, so those are safe to cache hard.
-		// index.html must not be: it is the file that names the current assets.
-		if strings.HasPrefix(r.URL.Path, "/assets/") {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		}
+		w.Header().Set("Cache-Control", cacheControlFor(r.URL.Path))
 		http.ServeFile(w, r, name)
 		return
 	}
@@ -75,6 +71,32 @@ func (s *SPA) resolve(urlPath string) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+// cacheControlFor picks a caching policy from the path.
+//
+// Three tiers, because the files differ in how their name relates to their
+// content:
+//
+//   - /assets/* is fingerprinted by Vite, so the name changes whenever the
+//     bytes do. Safe to cache for a year and never revalidate.
+//   - Other static media (images, .glb models, .hdr maps, fonts) keeps a stable
+//     name across deploys, so it gets a day of caching plus revalidation.
+//     Lighthouse flagged ~1.8 MB re-downloaded on repeat visits because these
+//     carried no Cache-Control at all.
+//   - Everything else, index.html above all, must revalidate every time: it is
+//     the file that names the current asset hashes, and caching it pins the app
+//     to a stale build.
+func cacheControlFor(p string) string {
+	if strings.HasPrefix(p, "/assets/") {
+		return "public, max-age=31536000, immutable"
+	}
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".webp", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".gif",
+		".glb", ".gltf", ".hdr", ".woff", ".woff2", ".mp3", ".ogg", ".wav":
+		return "public, max-age=86400, stale-while-revalidate=604800"
+	}
+	return "no-cache"
 }
 
 // IsAPIPath reports whether a path belongs to the backend rather than the app.
