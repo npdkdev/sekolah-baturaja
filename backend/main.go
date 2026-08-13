@@ -87,7 +87,11 @@ func main() {
 	// (gatcha_config, level_config, tv_config) are website_content rows already
 	// readable via GET /api/content/website?keys=..., so a dedicated route is
 	// redundant. Add one only if the payload shape needs to diverge.
-	r.Mount("/api/content", contentHandler.Routes())
+	// OptionalAuth so the admin write handlers inside can see the caller's role.
+	// They each check it themselves and refuse anyone who is not admin; without
+	// this the role was always empty and those endpoints refused everyone.
+	r.With(middleware.OptionalAuth(cfg.JWTSecret)).
+		Mount("/api/content", contentHandler.Routes())
 
 	// ── Public: login attempt recorder ───────────────────────────────────────
 	// Deliberately outside the RequireAuth group: a FAILED login has no token

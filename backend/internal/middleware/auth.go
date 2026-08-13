@@ -35,6 +35,37 @@ func RequireAuth(secret string) func(http.Handler) http.Handler {
 	}
 }
 
+// OptionalAuth populates the user id and role when a valid Bearer token is
+// present, and otherwise lets the request through unauthenticated.
+//
+// For routers that mix public reads with privileged writes — /api/content
+// serves the public website and also the admin news/announcement editors. Those
+// write handlers gate on RoleFromCtx, which is empty without any auth
+// middleware, so they were failing closed for everyone including admins.
+//
+// An invalid or expired token is treated exactly like no token: the request
+// continues with an empty role and every privileged handler refuses it. It must
+// never be treated as authenticated.
+func OptionalAuth(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			header := r.Header.Get("Authorization")
+			if !strings.HasPrefix(header, "Bearer ") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			claims, err := auth.ValidateAccessToken(strings.TrimPrefix(header, "Bearer "), secret)
+			if err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := context.WithValue(r.Context(), CtxUserID, claims.UserID)
+			ctx = context.WithValue(ctx, CtxRole, claims.Role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(roles))
 	for _, r := range roles {
