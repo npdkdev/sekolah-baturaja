@@ -9,7 +9,12 @@
 		<meta name="generator" content="Vite" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>LPQ Al-Fath Maulana</title>
-		<link rel="preload" href="https://fonts.gstatic.com/s/cinzel/v23/8vIU7ww63mVu7gtR-kwKxNvkNOjw-tbnTYrvDE5ZdqU.woff2" as="font" type="font/woff2" crossorigin />
+		<!-- Preconnect, bukan preload berkas woff2 tertentu. URL woff2 Google Fonts
+		     memuat nomor versi (v23) dan berubah tanpa pemberitahuan; yang lama
+		     mengembalikan 404 di console. Cinzel sendiri sudah dimuat lewat
+		     @import di src/index.css. -->
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link rel="stylesheet" href="/loading-screen.css" />
 	</head>
 	<body>

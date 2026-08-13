@@ -2,6 +2,12 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, useGLTF } from '@react-three/drei';
+
+// Peta preset -> berkas HDRI lokal di public/hdri/. Tambahkan entri baru di
+// sini (dan unduh berkasnya) kalau butuh preset lain.
+const ENVIRONMENT_FILES = {
+  studio: '/hdri/studio_small_03_1k.hdr',
+};
 import * as THREE from 'three';
 import './ModelViewer.css';
 
@@ -188,7 +194,13 @@ const ModelViewer = ({
         <ambientLight intensity={0.85} />
         <directionalLight position={[3.5, 4, 4.5]} intensity={1.35} />
         <directionalLight position={[-3, 2, 2]} intensity={0.55} />
-        {environmentPreset !== 'none' && <Environment preset={environmentPreset} background={false} />}
+        {/* HDRI di-self-host, bukan preset drei.
+            `preset` membuat drei mengambil berkas .hdr dari CDN pihak ketiga
+            saat runtime — gagal saat offline, menambah dependensi rantai pasok,
+            dan memaksa CSP mengizinkan host luar untuk connect-src. */}
+        {environmentPreset !== 'none' && (
+          <Environment files={ENVIRONMENT_FILES[environmentPreset] ?? ENVIRONMENT_FILES.studio} background={false} />
+        )}
         <Suspense fallback={null}>
           <ModelScene
             url={url}

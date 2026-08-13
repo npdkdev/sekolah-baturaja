@@ -246,6 +246,44 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// cspStrict is for API responses and uploaded media: nothing may load, nothing
+// may run. An uploaded file that somehow reaches a browser as HTML is inert.
+const cspStrict = "default-src 'none'; frame-ancestors 'none'; sandbox"
+
+// cspApp is for the SPA. Every entry below was added because the running app
+// actually failed without it — verified in a browser, not guessed:
+//
+//	script-src 'wasm-unsafe-eval'  <model-viewer> instantiates a WebAssembly
+//	                               module; the narrow wasm keyword is used
+//	                               instead of 'unsafe-eval', which would also
+//	                               re-enable eval() for injected script
+//	style-src 'unsafe-inline'      framer-motion animates by writing style
+//	                               attributes, and shadcn injects style tags
+//	style-src fonts.googleapis.com the Google Fonts stylesheet
+//	font-src fonts.gstatic.com     the woff2 files that stylesheet points to
+//	img/worker/connect blob:       three.js loads GLTF textures through blob
+//	                               URLs, and report/backup downloads build them
+//
+// connect-src stays at 'self' plus blob:. The drei HDRI used to be fetched from
+// a GitHub CDN at runtime; it is now self-hosted under public/hdri/, so no
+// third-party host needs punching through.
+//
+// script-src keeps neither 'unsafe-inline' nor 'unsafe-eval': a production
+// build emits only external, fingerprinted scripts, so injected script stays
+// blocked. That property depends on the dev-tooling HTML injection staying
+// gated to development in vite.config.js.
+const cspApp = "default-src 'self'; " +
+	"script-src 'self' 'wasm-unsafe-eval'; " +
+	"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+	"img-src 'self' data: blob:; " +
+	"font-src 'self' data: https://fonts.gstatic.com; " +
+	"connect-src 'self' blob:; " +
+	"worker-src 'self' blob:; " +
+	"object-src 'none'; " +
+	"base-uri 'self'; " +
+	"form-action 'self'; " +
+	"frame-ancestors 'none'"
+
 // securityHeaders applies defence-in-depth headers to every response, including
 // the static file routes. nosniff is the one that matters most there: it stops a
 // browser from re-interpreting an uploaded file as HTML regardless of the
@@ -256,9 +294,18 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Cross-Origin-Resource-Policy", "same-site")
-		// This origin serves JSON and uploaded media only — never HTML that should
-		// run script — so the strictest possible policy is also the correct one.
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; sandbox")
+		// Two policies, because this origin now serves two very different things.
+		//
+		// API responses and uploaded media must never execute anything: "sandbox"
+		// with default-src 'none' is right there. Applying that same policy to the
+		// app — which is what happened when the frontend moved onto this origin —
+		// blocks every script and stylesheet, so the page renders as unstyled HTML
+		// with a console full of CSP violations.
+		if handler.IsAPIPath(r.URL.Path) {
+			w.Header().Set("Content-Security-Policy", cspStrict)
+		} else {
+			w.Header().Set("Content-Security-Policy", cspApp)
+		}
 		next.ServeHTTP(w, r)
 	})
 }

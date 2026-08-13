@@ -33,7 +33,11 @@ COPY plugins ./plugins
 # browser tidak pernah melakukan permintaan lintas origin: CORS tidak terpakai
 # dan cookie refresh jadi cookie first-party biasa.
 ENV VITE_API_URL=""
-RUN npm run build
+# NODE_ENV hanya untuk perintah build, bukan ENV: sebagai ENV ia membuat
+# `npm ci` melewatkan devDependencies, padahal vite ada di sana. Nilainya
+# dibutuhkan karena vite.config.js memakai NODE_ENV untuk memutuskan apakah
+# perkakas dev disuntikkan ke HTML.
+RUN NODE_ENV=production npm run build
 
 # ---- Tahap 2: build API ---------------------------------------------------
 FROM golang:1.24-alpine AS builder

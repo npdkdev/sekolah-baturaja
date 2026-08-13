@@ -39,7 +39,7 @@ func NewSPA(root string) *SPA {
 // answer 404 as JSON, not hand back the HTML shell — a frontend that receives
 // HTML where it expected JSON fails in a way that is tedious to debug.
 func (s *SPA) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if isAPIPath(r.URL.Path) {
+	if IsAPIPath(r.URL.Path) {
 		jsonError(w, "endpoint tidak ditemukan", http.StatusNotFound)
 		return
 	}
@@ -77,7 +77,9 @@ func (s *SPA) resolve(urlPath string) (string, bool) {
 	return name, true
 }
 
-// isAPIPath reports whether a path belongs to the backend rather than the app.
-func isAPIPath(p string) bool {
+// IsAPIPath reports whether a path belongs to the backend rather than the app.
+// Used by the SPA fallback and by the security-header middleware, which applies
+// a far stricter CSP to API and upload responses than to the app itself.
+func IsAPIPath(p string) bool {
 	return strings.HasPrefix(p, "/api/") || strings.HasPrefix(p, "/files/")
 }

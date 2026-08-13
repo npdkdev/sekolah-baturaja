@@ -282,7 +282,12 @@ export default defineConfig({
 	plugins: [
 		...(isDev ? [inlineEditPlugin(), editModeDevPlugin(), iframeRouteRestorationPlugin(), selectionModePlugin()] : []),
 		react(),
-		addTransformIndexHtml
+		// Dev-only. Skrip ini mem-patch fetch dan mem-postMessage error console
+		// serta detail request ke window.parent — kanal perkakas app-builder yang
+		// tidak ada gunanya di produksi, dan mengirim isi request ke frame induk
+		// mana pun yang memuat aplikasi. Menyuntikkannya ke build produksi juga
+		// memaksa CSP melonggar ke script-src 'unsafe-inline'.
+		...(isDev ? [addTransformIndexHtml] : []),
 	],
 	server: {
 		cors: true,
