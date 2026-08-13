@@ -40,7 +40,7 @@ func (l *rateLimiter) allow(ctx context.Context, key string) bool {
 	}
 	var ok bool
 	err := l.db.QueryRow(ctx,
-		`SELECT public.consume_auth_rate_limit($1, $2, $3, $4)`,
+		`SELECT public.consume_auth_throttle($1, $2, $3, $4)`,
 		l.bucket, key, l.max, l.window,
 	).Scan(&ok)
 	if err != nil {
@@ -59,7 +59,7 @@ func (l *rateLimiter) reset(ctx context.Context, key string) {
 		key = "unknown"
 	}
 	if _, err := l.db.Exec(ctx,
-		`SELECT public.reset_auth_rate_limit($1, $2)`, l.bucket, key,
+		`SELECT public.reset_auth_throttle($1, $2)`, l.bucket, key,
 	); err != nil {
 		log.Printf("rate limit reset %s/%s: %v", l.bucket, key, err)
 	}
@@ -76,7 +76,7 @@ func SweepRateLimits(ctx context.Context, db *pgxpool.Pool) {
 			return
 		case <-ticker.C:
 			if _, err := db.Exec(ctx,
-				`DELETE FROM auth_rate_limits WHERE window_start < now() - interval '24 hours'`,
+				`DELETE FROM auth_throttle WHERE window_start < now() - interval '24 hours'`,
 			); err != nil {
 				log.Printf("rate limit sweep: %v", err)
 			}

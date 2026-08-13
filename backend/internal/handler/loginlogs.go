@@ -184,7 +184,7 @@ func (h *LoginLogsHandler) RecordAttempt(w http.ResponseWriter, r *http.Request)
 	ip := clientIP(r)
 
 	// The Supabase RPC rate-limited this at 20 hits / 300s via
-	// consume_auth_rate_limit. This endpoint is unauthenticated, so the guard is
+	// consume_auth_throttle. This endpoint is unauthenticated, so the guard is
 	// kept — now backed by the Postgres function of the same name, so the window
 	// survives a restart and is shared across instances.
 	if !h.limiter.allow(r.Context(), ip) {
