@@ -1,10 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import apiClient, { clearTokens } from '@/lib/apiClient';
+import apiClient, { clearTokens, logout as apiLogout, restoreSession } from '@/lib/apiClient';
 import { useToast } from '@/hooks/use-toast';
 
 const AuthContext = createContext(undefined);
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 // Normalise profile from /api/auth/me to match field names components expect
 const normalizeUser = (data) => ({
@@ -53,10 +51,12 @@ export const AuthProvider = ({ children }) => {
     }
   }, [clearAuthState]);
 
-  // Restore session from localStorage on mount
+  // Restore the session by exchanging the httpOnly refresh cookie for an access
+  // token. Nothing is read from localStorage any more — the cookie is the only
+  // thing that persists across a reload, and script cannot read it.
   useEffect(() => {
     const restore = async () => {
-      const token = localStorage.getItem('access_token');
+      const token = await restoreSession();
       if (!token) { setLoading(false); return; }
       try {
         const data = await apiClient.get('/api/auth/me');
@@ -85,7 +85,9 @@ export const AuthProvider = ({ children }) => {
       const username = rawUsername.trim();
       const password = rawPassword.trim();
 
-      const res = await fetch(`${API_URL}/api/auth/login`, {
+      // credentials: 'include' so the browser stores the httpOnly refresh cookie
+      // the backend sets on a successful login.
+      const res = await apiClient.authFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -116,6 +118,8 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Ask the server to clear the refresh cookie; script cannot delete it.
+    await apiLogout();
     clearAuthState();
     return { error: null };
   }, [clearAuthState]);

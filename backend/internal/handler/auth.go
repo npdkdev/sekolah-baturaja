@@ -27,16 +27,16 @@ type AuthHandler struct {
 	// Both are needed: the IP window alone lets a botnet spread a guessing run
 	// across many addresses against one account, and the username window alone
 	// lets one host walk the whole roster one guess per account.
-	ipLimiter   *attemptLimiter
-	userLimiter *attemptLimiter
+	ipLimiter   *rateLimiter
+	userLimiter *rateLimiter
 }
 
 func NewAuthHandler(db *pgxpool.Pool, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{
 		db:          db,
 		cfg:         cfg,
-		ipLimiter:   newAttemptLimiter(10, 5*time.Minute),
-		userLimiter: newAttemptLimiter(10, 15*time.Minute),
+		ipLimiter:   newRateLimiter(db, "login_ip", 10, 5*time.Minute),
+		userLimiter: newRateLimiter(db, "login_user", 10, 15*time.Minute),
 	}
 }
 
@@ -60,7 +60,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Brute-force guard. Checked before any DB work so a flood cannot be turned
 	// into a bcrypt-cost amplification attack against the server itself.
-	if !h.ipLimiter.allow(clientIP(r)) || !h.userLimiter.allow(strings.ToLower(req.Username)) {
+	if !h.ipLimiter.allow(r.Context(), clientIP(r)) || !h.userLimiter.allow(r.Context(), strings.ToLower(req.Username)) {
 		jsonError(w, "terlalu banyak percobaan login, coba lagi nanti", http.StatusTooManyRequests)
 		return
 	}
@@ -94,8 +94,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// A successful login clears the counters so a legitimate user who fumbled
 	// their password a few times is not locked out afterwards.
-	h.ipLimiter.reset(clientIP(r))
-	h.userLimiter.reset(strings.ToLower(req.Username))
+	h.ipLimiter.reset(r.Context(), clientIP(r))
+	h.userLimiter.reset(r.Context(), strings.ToLower(req.Username))
 
 	pair, err := auth.IssueTokenPair(
 		userID, role,
@@ -107,19 +107,77 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "gagal membuat token", http.StatusInternalServerError)
 		return
 	}
-	jsonOK(w, pair)
+	h.setRefreshCookie(w, pair.RefreshToken)
+	jsonOK(w, accessOnly(pair))
+}
+
+// refreshCookieName holds the long-lived credential. It never reaches
+// JavaScript.
+const refreshCookieName = "lpq_refresh"
+
+// refreshCookiePath scopes the cookie to the auth endpoints, so it is not
+// attached to every API call — only where it is actually needed.
+const refreshCookiePath = "/api/auth"
+
+// accessOnly strips the refresh token from what goes back in the body.
+//
+// Both tokens used to be returned as JSON and stored in localStorage, which
+// means any XSS could read a 30-day credential and keep the account
+// indefinitely. The refresh token now travels only as an httpOnly cookie:
+// unreadable from script, so an XSS is limited to the 15-minute access token
+// held in memory for as long as the tab is open.
+func accessOnly(pair auth.TokenPair) map[string]string {
+	return map[string]string{"access_token": pair.AccessToken}
+}
+
+func (h *AuthHandler) setRefreshCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    token,
+		Path:     refreshCookiePath,
+		HttpOnly: true,
+		Secure:   h.cfg.CookieSecure,
+		// Strict: the cookie is never attached to a cross-site request, which is
+		// what removes the CSRF surface on /api/auth/refresh. This requires the
+		// frontend and the API to be same-site (app.example.id + api.example.id,
+		// or any two ports on one host in development).
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   h.cfg.RefreshTokenTTL * 24 * 60 * 60,
+	})
+}
+
+func (h *AuthHandler) clearRefreshCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     refreshCookiePath,
+		HttpOnly: true,
+		Secure:   h.cfg.CookieSecure,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+}
+
+// Logout clears the refresh cookie. The access token is not revocable — it is
+// stateless and short-lived — so the client drops its in-memory copy and the
+// remaining validity window closes on its own.
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	h.clearRefreshCookie(w)
+	jsonOK(w, map[string]bool{"ok": true})
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, maxAuthBodyBytes)).Decode(&body); err != nil || body.RefreshToken == "" {
-		jsonError(w, "refresh_token wajib diisi", http.StatusBadRequest)
+	// The refresh token comes from the httpOnly cookie only. Accepting it from
+	// the request body as a fallback would defeat the point: script could still
+	// hold and replay one.
+	cookie, err := r.Cookie(refreshCookieName)
+	if err != nil || cookie.Value == "" {
+		jsonError(w, "sesi tidak ditemukan", http.StatusUnauthorized)
 		return
 	}
-	claims, err := auth.ValidateRefreshToken(body.RefreshToken, h.cfg.JWTRefreshSecret)
+	claims, err := auth.ValidateRefreshToken(cookie.Value, h.cfg.JWTRefreshSecret)
 	if err != nil {
+		h.clearRefreshCookie(w)
 		jsonError(w, "refresh token tidak valid atau kedaluwarsa", http.StatusUnauthorized)
 		return
 	}
@@ -144,7 +202,10 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "gagal membuat token", http.StatusInternalServerError)
 		return
 	}
-	jsonOK(w, pair)
+	// Rotate: each refresh issues a fresh cookie, so a stolen one has a bounded
+	// life rather than lasting the full 30 days.
+	h.setRefreshCookie(w, pair.RefreshToken)
+	jsonOK(w, accessOnly(pair))
 }
 
 // maxAuthBodyBytes caps auth request bodies. These payloads are two short

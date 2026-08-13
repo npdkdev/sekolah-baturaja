@@ -18,6 +18,10 @@ type Config struct {
 	RefreshTokenTTL  int // days
 	UploadDir        string
 	MaxUploadBytes   int64
+	// CookieSecure marks the refresh cookie Secure so it is only ever sent over
+	// HTTPS. Defaults to true; set COOKIE_SECURE=false only for plain-http local
+	// development, never in production.
+	CookieSecure bool
 }
 
 // minSecretLen is the shortest JWT secret accepted. HS256 keys shorter than the
@@ -35,6 +39,7 @@ func Load() (*Config, error) {
 		RefreshTokenTTL:  getEnvInt("REFRESH_TOKEN_TTL_DAYS", 30),
 		UploadDir:        getEnv("UPLOAD_DIR", "/app/uploads"),
 		MaxUploadBytes:   int64(getEnvInt("MAX_UPLOAD_MB", 20)) * 1024 * 1024,
+		CookieSecure:     getEnv("COOKIE_SECURE", "true") != "false",
 	}
 
 	// Fail closed at startup rather than serving forgeable tokens. SETUP.md

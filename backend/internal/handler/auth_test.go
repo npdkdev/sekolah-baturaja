@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -105,23 +106,21 @@ func TestDummyBcryptHashIsValid(t *testing.T) {
 	}
 }
 
-func TestAttemptLimiter(t *testing.T) {
-	l := newAttemptLimiter(3, time.Minute)
+// TestRateLimiterFailsClosed pins the behaviour that matters when the database
+// is unreachable: allow() must refuse rather than wave the request through.
+// A limiter that fails open would hand an attacker the brute-force ceiling back
+// simply by exhausting the connection pool.
+func TestRateLimiterFailsClosed(t *testing.T) {
+	// A nil pool makes every query fail, standing in for a database outage.
+	l := newRateLimiter(nil, "test", 10, time.Minute)
 
-	for i := 0; i < 3; i++ {
-		if !l.allow("1.2.3.4") {
-			t.Fatalf("attempt %d should be allowed", i+1)
+	defer func() {
+		if recover() != nil {
+			t.Fatal("allow() must handle a broken pool, not panic")
 		}
-	}
-	if l.allow("1.2.3.4") {
-		t.Error("fourth attempt should be throttled")
-	}
-	if !l.allow("5.6.7.8") {
-		t.Error("a different key must have its own window")
-	}
+	}()
 
-	l.reset("1.2.3.4")
-	if !l.allow("1.2.3.4") {
-		t.Error("reset should clear the window after a successful login")
+	if l.allow(context.Background(), "1.2.3.4") {
+		t.Error("allow() must return false when the counter cannot be read")
 	}
 }

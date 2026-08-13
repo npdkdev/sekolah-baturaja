@@ -19,13 +19,13 @@ type ContentHandler struct {
 	// feedbackLimiter throttles the public contact form. It is the only
 	// unauthenticated write endpoint in the API, so without a cap anyone can
 	// fill the feedbacks table as fast as they can send requests.
-	feedbackLimiter *attemptLimiter
+	feedbackLimiter *rateLimiter
 }
 
 func NewContentHandler(db *pgxpool.Pool) *ContentHandler {
 	return &ContentHandler{
 		db:              db,
-		feedbackLimiter: newAttemptLimiter(5, time.Hour),
+		feedbackLimiter: newRateLimiter(db, "feedback", 5, time.Hour),
 	}
 }
 
@@ -690,7 +690,7 @@ func (h *ContentHandler) DeleteAnnouncement(w http.ResponseWriter, r *http.Reque
 
 // SubmitFeedback POST /api/content/feedback (public, no auth)
 func (h *ContentHandler) SubmitFeedback(w http.ResponseWriter, r *http.Request) {
-	if !h.feedbackLimiter.allow(clientIP(r)) {
+	if !h.feedbackLimiter.allow(r.Context(), clientIP(r)) {
 		jsonError(w, "terlalu banyak pesan terkirim, coba lagi nanti", http.StatusTooManyRequests)
 		return
 	}

@@ -37,6 +37,12 @@ func main() {
 
 	store := storage.New(cfg.UploadDir, cfg.FileSignKey(), cfg.MaxUploadBytes)
 
+	// Expired rate-limit windows are disposable; sweep them hourly so the table
+	// cannot grow without bound.
+	sweepCtx, stopSweep := context.WithCancel(context.Background())
+	defer stopSweep()
+	go handler.SweepRateLimits(sweepCtx, pool)
+
 	// Init all handlers
 	authHandler := handler.NewAuthHandler(pool, cfg)
 	fileHandler := handler.NewFileHandler(store, cfg)
@@ -72,6 +78,9 @@ func main() {
 	// ── Public: auth ─────────────────────────────────────────────────────────
 	r.Post("/api/auth/login", authHandler.Login)
 	r.Post("/api/auth/refresh", authHandler.Refresh)
+	// Logout only clears the refresh cookie, so it must work even when the access
+	// token has already expired.
+	r.Post("/api/auth/logout", authHandler.Logout)
 	// ── Public: static file serving ──────────────────────────────────────────
 	r.Get("/files/website-assets/*", fileHandler.ServePublic)
 	r.Get("/files/music-files/*", fileHandler.ServePublic)
@@ -204,6 +213,10 @@ func corsMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			// Needed so the browser sends the refresh cookie on /api/auth/refresh.
+			// Safe only because the origin is echoed from a strict allowlist and is
+			// never "*" — the two are mutually exclusive by spec for good reason.
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Max-Age", "600")
 		}
 		// Vary on Origin so a cache cannot serve one site's CORS decision to another.

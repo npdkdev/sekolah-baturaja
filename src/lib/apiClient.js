@@ -1,27 +1,49 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
-const getToken = () => localStorage.getItem('access_token');
-const getRefreshToken = () => localStorage.getItem('refresh_token');
-const setTokens = ({ access_token, refresh_token }) => {
-  localStorage.setItem('access_token', access_token);
-  if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
-};
-export const clearTokens = () => {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
+// The access token lives in a module variable, never in localStorage.
+//
+// Storing it (and the 30-day refresh token) in localStorage meant any XSS could
+// read a long-lived credential and keep the account indefinitely. The refresh
+// token is now an httpOnly cookie the browser holds and script cannot read; the
+// access token is short-lived and disappears when the tab closes.
+let accessToken = null;
+
+const getToken = () => accessToken;
+const setTokens = ({ access_token }) => { accessToken = access_token || null; };
+export const clearTokens = () => { accessToken = null; };
+
+// Auth calls must carry the refresh cookie, so they need credentials.
+const authFetch = (path, opts = {}) =>
+  fetch(`${API_URL}${path}`, { credentials: 'include', ...opts });
+
+export const logout = async () => {
+  try {
+    await authFetch('/api/auth/logout', { method: 'POST' });
+  } catch {
+    // Network failure still clears the local session; the cookie expires on its own.
+  }
+  clearTokens();
 };
 
 let refreshPromise = null;
 
+// restoreSession exchanges the refresh cookie for an access token. Called on app
+// boot — this is what makes a session survive a reload now that nothing is
+// persisted in localStorage. Returns null when there is no valid session.
+export const restoreSession = async () => {
+  try {
+    return await tryRefresh();
+  } catch {
+    return null;
+  }
+};
+
 const tryRefresh = async () => {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
-    const rt = getRefreshToken();
-    if (!rt) throw new Error('No refresh token');
-    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+    const res = await authFetch('/api/auth/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: rt }),
     });
     if (!res.ok) { clearTokens(); throw new Error('Session expired'); }
     const json = await res.json();
@@ -43,7 +65,9 @@ const request = async (method, path, body, opts = {}) => {
 
   let res = await fetch(url, fetchOpts);
 
-  if (res.status === 401 && getRefreshToken()) {
+  // A 401 is now also the normal path on first load, when no access token has
+  // been fetched yet but the refresh cookie is still valid.
+  if (res.status === 401) {
     try {
       const newToken = await tryRefresh();
       headers['Authorization'] = `Bearer ${newToken}`;
@@ -73,6 +97,7 @@ const apiClient = {
   setTokens,
   clearTokens,
   getToken,
+  authFetch,
 };
 
 export default apiClient;

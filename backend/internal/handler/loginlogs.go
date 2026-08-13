@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -34,14 +33,14 @@ import (
 type LoginLogsHandler struct {
 	db      *pgxpool.Pool
 	cfg     *config.Config
-	limiter *attemptLimiter
+	limiter *rateLimiter
 }
 
 func NewLoginLogsHandler(db *pgxpool.Pool, cfg *config.Config) *LoginLogsHandler {
 	return &LoginLogsHandler{
 		db:      db,
 		cfg:     cfg,
-		limiter: newAttemptLimiter(20, 5*time.Minute),
+		limiter: newRateLimiter(db, "login_attempt", 20, 5*time.Minute),
 	}
 }
 
@@ -185,11 +184,10 @@ func (h *LoginLogsHandler) RecordAttempt(w http.ResponseWriter, r *http.Request)
 	ip := clientIP(r)
 
 	// The Supabase RPC rate-limited this at 20 hits / 300s via
-	// consume_auth_rate_limit. This endpoint is unauthenticated, so keep an
-	// equivalent guard here. In-memory and therefore per-process — good enough
-	// for a single-instance deployment; move to Postgres or Redis if the backend
-	// is ever scaled horizontally.
-	if !h.limiter.allow(ip) {
+	// consume_auth_rate_limit. This endpoint is unauthenticated, so the guard is
+	// kept — now backed by the Postgres function of the same name, so the window
+	// survives a restart and is shared across instances.
+	if !h.limiter.allow(r.Context(), ip) {
 		jsonError(w, "terlalu banyak percobaan, coba lagi nanti", http.StatusTooManyRequests)
 		return
 	}
@@ -250,69 +248,4 @@ func clientIP(r *http.Request) string {
 		return strings.TrimSpace(r.RemoteAddr)
 	}
 	return host
-}
-
-// attemptLimiter is a fixed-window counter keyed by IP.
-type attemptLimiter struct {
-	mu     sync.Mutex
-	hits   map[string]*attemptWindow
-	max    int
-	window time.Duration
-	lastGC time.Time
-}
-
-type attemptWindow struct {
-	count int
-	start time.Time
-}
-
-func newAttemptLimiter(max int, window time.Duration) *attemptLimiter {
-	return &attemptLimiter{
-		hits:   map[string]*attemptWindow{},
-		max:    max,
-		window: window,
-		lastGC: time.Now(),
-	}
-}
-
-func (l *attemptLimiter) allow(key string) bool {
-	if key == "" {
-		key = "unknown"
-	}
-	now := time.Now()
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	// Drop expired windows occasionally so the map cannot grow without bound.
-	if now.Sub(l.lastGC) > l.window {
-		for k, v := range l.hits {
-			if now.Sub(v.start) > l.window {
-				delete(l.hits, k)
-			}
-		}
-		l.lastGC = now
-	}
-
-	w, ok := l.hits[key]
-	if !ok || now.Sub(w.start) > l.window {
-		l.hits[key] = &attemptWindow{count: 1, start: now}
-		return true
-	}
-	if w.count >= l.max {
-		return false
-	}
-	w.count++
-	return true
-}
-
-// reset clears the window for a key. Called after a successful login so a user
-// who mistyped their password a few times is not left throttled.
-func (l *attemptLimiter) reset(key string) {
-	if key == "" {
-		key = "unknown"
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	delete(l.hits, key)
 }
