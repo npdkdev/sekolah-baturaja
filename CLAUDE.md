@@ -17,9 +17,15 @@ npm run dev        # Vite dev server on port 3000
 npm run build      # Generates LLMS metadata then runs vite build
 npm run preview    # Preview production build on port 3000
 npm run lint       # ESLint (flat config, --quiet)
+npm test           # Vitest (tests/), sekali jalan
+npm run test:watch # Vitest mode watch
 ```
 
-No test framework is configured. Validation is lint + build.
+Backend: `cd backend && go test ./...`
+
+Catatan: shim `node_modules/.bin/eslint` dan `.bin/vite` di repo ini bisa gagal
+dengan `ERR_MODULE_NOT_FOUND`. Kalau itu terjadi, panggil entrypoint aslinya
+(`node node_modules/eslint/bin/eslint.js .`, `node node_modules/vite/bin/vite.js`).
 
 ## Architecture
 
