@@ -305,3 +305,14 @@ func (l *attemptLimiter) allow(key string) bool {
 	w.count++
 	return true
 }
+
+// reset clears the window for a key. Called after a successful login so a user
+// who mistyped their password a few times is not left throttled.
+func (l *attemptLimiter) reset(key string) {
+	if key == "" {
+		key = "unknown"
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.hits, key)
+}

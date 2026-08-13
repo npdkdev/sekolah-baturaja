@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -17,6 +20,11 @@ type Config struct {
 	MaxUploadBytes   int64
 }
 
+// minSecretLen is the shortest JWT secret accepted. HS256 keys shorter than the
+// 256-bit hash output weaken the MAC and are brute-forcible offline from any
+// single captured token.
+const minSecretLen = 32
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		Port:             getEnv("PORT", "8080"),
@@ -28,7 +36,32 @@ func Load() (*Config, error) {
 		UploadDir:        getEnv("UPLOAD_DIR", "/app/uploads"),
 		MaxUploadBytes:   int64(getEnvInt("MAX_UPLOAD_MB", 20)) * 1024 * 1024,
 	}
+
+	// Fail closed at startup rather than serving forgeable tokens. SETUP.md
+	// already documents "min 32 karakter acak" for both, but nothing enforced it.
+	if len(cfg.JWTSecret) < minSecretLen {
+		return nil, fmt.Errorf("JWT_SECRET terlalu pendek: minimal %d karakter", minSecretLen)
+	}
+	if len(cfg.JWTRefreshSecret) < minSecretLen {
+		return nil, fmt.Errorf("JWT_REFRESH_SECRET terlalu pendek: minimal %d karakter", minSecretLen)
+	}
+	// Identical secrets collapse the access/refresh split: a refresh token would
+	// verify wherever an access token is expected, and only the "type" claim
+	// would stand between a 30-day token and API access.
+	if cfg.JWTSecret == cfg.JWTRefreshSecret {
+		return nil, fmt.Errorf("JWT_SECRET dan JWT_REFRESH_SECRET harus berbeda")
+	}
+
 	return cfg, nil
+}
+
+// FileSignKey derives the HMAC key for signed file URLs from the JWT secret
+// instead of reusing it verbatim. Domain separation: a weakness or leak in one
+// signing context must not transfer to the other.
+func (c *Config) FileSignKey() string {
+	m := hmac.New(sha256.New, []byte(c.JWTSecret))
+	m.Write([]byte("lpq:file-signing:v1"))
+	return hex.EncodeToString(m.Sum(nil))
 }
 
 func mustEnv(key string) string {

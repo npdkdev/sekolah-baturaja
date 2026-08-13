@@ -26,6 +26,13 @@ func NewMMQHandler(db *pgxpool.Pool) *MMQHandler {
 func (h *MMQHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
+	// MMQ is the teachers' own forum: schedules, meeting attendance, and minutes.
+	// Nothing here is santri-facing, but the reads were open to any authenticated
+	// caller — so a santri could pull staff attendance records and the full text
+	// of every meeting's notulensi. Staff-only across the board; writes stay
+	// narrower still.
+	r.Use(middleware.RequireRole(middleware.StaffRoles...))
+
 	// Jadwal
 	r.Get("/schedules", h.ListSchedules)
 	r.Get("/schedules/by-day/{day}", h.SchedulesByDay)

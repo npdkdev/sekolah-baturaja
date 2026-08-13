@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,7 +35,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	store := storage.New(cfg.UploadDir, cfg.JWTSecret, cfg.MaxUploadBytes)
+	store := storage.New(cfg.UploadDir, cfg.FileSignKey(), cfg.MaxUploadBytes)
 
 	// Init all handlers
 	authHandler := handler.NewAuthHandler(pool, cfg)
@@ -57,7 +58,15 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
-	r.Use(chimw.RealIP)
+	// RealIP rewrites RemoteAddr from X-Forwarded-For / X-Real-IP, which any
+	// client can forge. That is fine behind a reverse proxy that overwrites those
+	// headers, and dangerous when the backend is reachable directly: a spoofed
+	// header would hand out a fresh login rate-limit bucket on every request.
+	// Opt in explicitly via TRUST_PROXY once a proxy is actually in front.
+	if os.Getenv("TRUST_PROXY") == "true" {
+		r.Use(chimw.RealIP)
+	}
+	r.Use(securityHeaders)
 	r.Use(corsMiddleware)
 
 	// ── Public: auth ─────────────────────────────────────────────────────────
@@ -164,19 +173,58 @@ func main() {
 	}
 }
 
+// allowedOrigins is the parsed CORS_ORIGIN allowlist, comma-separated so a
+// staging and production frontend can share one backend.
+var allowedOrigins = parseOrigins(os.Getenv("CORS_ORIGIN"))
+
+func parseOrigins(raw string) map[string]bool {
+	out := map[string]bool{}
+	for _, o := range strings.Split(raw, ",") {
+		if o = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(o), "/")); o != "" {
+			out[o] = true
+		}
+	}
+	return out
+}
+
+// corsMiddleware echoes the request Origin only when it is on the allowlist.
+//
+// The previous version fell back to "*" whenever CORS_ORIGIN was unset, so a
+// misconfigured deploy silently let any website on the internet call the API
+// with the user's token. There is no fallback now: an unlisted origin simply
+// gets no CORS headers and the browser blocks the response.
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := os.Getenv("CORS_ORIGIN")
-		if origin == "" {
-			origin = "*"
+		origin := strings.TrimSuffix(r.Header.Get("Origin"), "/")
+		if origin != "" && allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "600")
 		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		// Vary on Origin so a cache cannot serve one site's CORS decision to another.
+		w.Header().Add("Vary", "Origin")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeaders applies defence-in-depth headers to every response, including
+// the static file routes. nosniff is the one that matters most there: it stops a
+// browser from re-interpreting an uploaded file as HTML regardless of the
+// Content-Type we set.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-site")
+		// This origin serves JSON and uploaded media only — never HTML that should
+		// run script — so the strictest possible policy is also the correct one.
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; sandbox")
 		next.ServeHTTP(w, r)
 	})
 }

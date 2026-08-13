@@ -167,7 +167,7 @@ func (h *AppConfigHandler) UpsertConfig(w http.ResponseWriter, r *http.Request) 
 		      updated_at = now()
 	`, key, body.Content)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan konfigurasi: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal menyimpan konfigurasi", err)
 		return
 	}
 

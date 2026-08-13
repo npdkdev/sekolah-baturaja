@@ -12,8 +12,8 @@ _private_reference/
 node_modules/
 dist/
 
-supabase/.temp/
-supabase/.branches/
+db/.temp/
+db/.branches/
 .codex-local/
 
 .agents/*

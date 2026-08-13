@@ -196,7 +196,7 @@ func (h *ContentHandler) UpsertWebsiteContent(w http.ResponseWriter, r *http.Req
 		      updated_at = now()
 	`, key, body.Content, isPublic)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan konten: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal menyimpan konten", err)
 		return
 	}
 
@@ -331,7 +331,7 @@ func (h *ContentHandler) CreateNews(w http.ResponseWriter, r *http.Request) {
 		RETURNING id
 	`, body.Title, body.Slug, body.Excerpt, body.Content, body.CoverImageURL, body.Status, body.PublishedAt).Scan(&id)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan berita: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal menyimpan berita", err)
 		return
 	}
 
@@ -417,7 +417,7 @@ func (h *ContentHandler) UpdateNews(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf("UPDATE news SET %s WHERE id = $%d", strings.Join(setClauses, ", "), idx)
 	tag, err := h.db.Exec(r.Context(), query, args...)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal mengupdate berita: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal mengupdate berita", err)
 		return
 	}
 	if tag.RowsAffected() == 0 {
@@ -553,7 +553,7 @@ func (h *ContentHandler) CreateAnnouncement(w http.ResponseWriter, r *http.Reque
 		body.Status, body.Priority, body.ValidUntil, body.PublishedAt,
 	).Scan(&id)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan pengumuman: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal menyimpan pengumuman", err)
 		return
 	}
 
@@ -639,7 +639,7 @@ func (h *ContentHandler) UpdateAnnouncement(w http.ResponseWriter, r *http.Reque
 	query := fmt.Sprintf("UPDATE announcements SET %s WHERE id = $%d", strings.Join(setClauses, ", "), idx)
 	tag, err := h.db.Exec(r.Context(), query, args...)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal mengupdate pengumuman: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal mengupdate pengumuman", err)
 		return
 	}
 	if tag.RowsAffected() == 0 {
@@ -705,7 +705,7 @@ func (h *ContentHandler) SubmitFeedback(w http.ResponseWriter, r *http.Request) 
 		RETURNING id
 	`, body.Nama, body.Email, body.NoHp, body.Pesan).Scan(&id)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan pesan: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal menyimpan pesan", err)
 		return
 	}
 

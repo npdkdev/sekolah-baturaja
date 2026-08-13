@@ -1,4 +1,14 @@
 .gocache/
 .gocache
-*.env.local
 server
+
+# Secrets. SETUP.md instructs creating backend/.env with JWT_SECRET,
+# JWT_REFRESH_SECRET and POSTGRES_PASSWORD — only *.env.local was ignored
+# before, so a plain `.env` was committable.
+.env
+.env.*
+!.env.example
+
+# Uploaded files live in a Docker volume; a local bind mount must never be
+# committed (santri photos are personal data).
+uploads/

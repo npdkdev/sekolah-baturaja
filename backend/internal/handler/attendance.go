@@ -29,9 +29,13 @@ func NewAttendanceHandler(db *pgxpool.Pool) *AttendanceHandler {
 func (h *AttendanceHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
-	// Record
+	// Record. Create stays open to every authenticated role because the handler
+	// itself confines a santri to their own user_id; Update cannot make that
+	// distinction — it addresses a row by id — so it is staff-only. Without this
+	// guard any santri could rewrite anyone's attendance: status, date, class,
+	// even which user the row belongs to.
 	r.Post("/", h.Create)
-	r.Put("/{id}", h.Update)
+	r.With(middleware.RequireRole("admin", "guru")).Put("/{id}", h.Update)
 	r.With(middleware.RequireRole("admin", "guru")).Put("/{id}/absent", h.MarkAbsent)
 
 	// Fetch
@@ -41,9 +45,12 @@ func (h *AttendanceHandler) Routes() chi.Router {
 	r.Get("/count", h.Count)
 	r.Get("/recap", h.Recap)
 
-	// Calendar
+	// Calendar. Reads are open — every dashboard renders the school calendar —
+	// but writes come only from CalendarManagement in the admin panel. Previously
+	// unguarded, so any santri could declare a school holiday, which feeds the
+	// attendance "effective days" calculation and therefore every recap.
 	r.Get("/calendar", h.Calendar)
-	r.Post("/calendar", h.CreateCalendar)
+	r.With(middleware.RequireRole("admin")).Post("/calendar", h.CreateCalendar)
 
 	// Stats
 	r.Get("/guru-stats", h.GuruStats)
@@ -391,7 +398,17 @@ func (h *AttendanceHandler) List(w http.ResponseWriter, r *http.Request) {
 		idx++
 	}
 
-	if v := q.Get("user_id"); v != "" {
+	// Scope a santri to their own rows before any client-supplied filter is
+	// applied. Otherwise the user_id filter is optional and a santri could page
+	// through the whole school's attendance history.
+	if middleware.RoleFromCtx(r.Context()) == "santri" {
+		self := middleware.UserIDFromCtx(r.Context())
+		if self == "" {
+			jsonError(w, "identitas pengguna tidak valid", http.StatusUnauthorized)
+			return
+		}
+		add("user_id", self)
+	} else if v := q.Get("user_id"); v != "" {
 		add("user_id", v)
 	}
 	if v := q.Get("role"); v != "" {

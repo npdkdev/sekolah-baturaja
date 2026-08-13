@@ -153,6 +153,19 @@ func scanPaymentRows(rows pgx.Rows) ([]paymentRow, error) {
 func (h *PaymentHandler) ListPayments(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	santriID := q.Get("santri_id")
+
+	// A santri may only ever see their own payment rows. The filter was taken
+	// straight from the query string, so any logged-in santri could omit
+	// santri_id — or pass someone else's — and page through every family's
+	// billing history, including the `search` filter by name. Staff roles keep
+	// the unrestricted view the admin and guru panels rely on.
+	if middleware.RoleFromCtx(r.Context()) == "santri" {
+		santriID = middleware.UserIDFromCtx(r.Context())
+		if santriID == "" {
+			jsonError(w, "identitas pengguna tidak valid", http.StatusUnauthorized)
+			return
+		}
+	}
 	bulan := q.Get("bulan")
 	tahun := q.Get("tahun")
 	status := q.Get("status")
@@ -434,7 +447,7 @@ func (h *PaymentHandler) CreatePayments(w http.ResponseWriter, r *http.Request) 
 			item.Catatan, item.TransactionID, createdBy,
 		).Scan(&id, &createdAt)
 		if err != nil {
-			jsonError(w, fmt.Sprintf("gagal menyimpan pembayaran: %v", err), http.StatusInternalServerError)
+			jsonServerError(w, "gagal menyimpan pembayaran", err)
 			return
 		}
 		inserted = append(inserted, map[string]any{
@@ -453,7 +466,7 @@ func (h *PaymentHandler) CreatePayments(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan pembayaran: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal menyimpan pembayaran", err)
 		return
 	}
 
@@ -697,7 +710,7 @@ func (h *PaymentHandler) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		RETURNING id, created_at
 	`, body.TanggalPengeluaran, body.Kategori, body.Deskripsi, body.Jumlah, callerID).Scan(&id, &createdAt)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan pengeluaran: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal menyimpan pengeluaran", err)
 		return
 	}
 
@@ -751,7 +764,7 @@ func (h *PaymentHandler) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 		WHERE id = $1 AND deleted_at IS NULL
 	`, id, body.TanggalPengeluaran, body.Kategori, body.Deskripsi, body.Jumlah, nullableUserID(r))
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal memperbarui pengeluaran: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal memperbarui pengeluaran", err)
 		return
 	}
 	if tag.RowsAffected() == 0 {
@@ -900,7 +913,7 @@ func (h *PaymentHandler) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 		strings.Join(sets, ", "))
 	tag, err := h.db.Exec(r.Context(), query, args...)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal memperbarui pembayaran: %v", err), http.StatusInternalServerError)
+		jsonServerError(w, "gagal memperbarui pembayaran", err)
 		return
 	}
 	if tag.RowsAffected() == 0 {

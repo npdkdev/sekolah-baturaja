@@ -52,6 +52,20 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	}
 }
 
+// StaffRoles are the roles that operate the school: everything except santri.
+// Kept in one place so an authorization check cannot drift from the others.
+var StaffRoles = []string{"admin", "guru", "pentashih"}
+
+// IsStaff reports whether a role is a staff role.
+func IsStaff(role string) bool {
+	for _, s := range StaffRoles {
+		if role == s {
+			return true
+		}
+	}
+	return false
+}
+
 func UserIDFromCtx(ctx context.Context) string {
 	v, _ := ctx.Value(CtxUserID).(string)
 	return v

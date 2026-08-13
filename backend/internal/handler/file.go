@@ -96,6 +96,46 @@ func authorizeFileWrite(r *http.Request, bucket, path string) (ok bool, message 
 	return false, "hanya admin yang dapat mengubah file ini"
 }
 
+// allowedExtensions lists, per bucket, the extensions a stored file may carry.
+// Deliberately an allowlist: ".svg" is absent because SVG can carry script, and
+// no document or markup type is servable from these buckets.
+var allowedExtensions = map[string]map[string]bool{
+	storage.BucketAvatars:       {".jpg": true, ".jpeg": true, ".png": true, ".webp": true},
+	storage.BucketWebsiteAssets: {".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".pdf": true},
+	storage.BucketMusic:         {".mp3": true, ".wav": true, ".ogg": true},
+}
+
+func allowedExtension(bucket, path string) bool {
+	allowed, ok := allowedExtensions[bucket]
+	if !ok {
+		return false
+	}
+	return allowed[strings.ToLower(filepath.Ext(path))]
+}
+
+// canonicalMIME normalises what http.DetectContentType returns to the spellings
+// the storage allowlist uses. Go reports WAV as "audio/wave" and Ogg as
+// "application/ogg", neither of which matches the bucket allowlist verbatim.
+//
+// MP3 frames without an ID3 header sniff as "application/octet-stream"; that is
+// left to fail the storage MIME check rather than being force-mapped, since the
+// extension allowlist above is what keeps the served Content-Type safe.
+func canonicalMIME(detected string) string {
+	base := detected
+	if i := strings.IndexByte(base, ';'); i >= 0 {
+		base = strings.TrimSpace(base[:i])
+	}
+	switch base {
+	case "audio/wave", "audio/x-wav":
+		return "audio/wav"
+	case "application/ogg", "audio/ogg":
+		return "audio/ogg"
+	case "audio/mp3":
+		return "audio/mpeg"
+	}
+	return base
+}
+
 func (h *FileHandler) handleUpload(w http.ResponseWriter, r *http.Request, bucket string) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.cfg.MaxUploadBytes)
 	if err := r.ParseMultipartForm(h.cfg.MaxUploadBytes); err != nil {
@@ -109,7 +149,6 @@ func (h *FileHandler) handleUpload(w http.ResponseWriter, r *http.Request, bucke
 	}
 	defer file.Close()
 
-	mimeType := header.Header.Get("Content-Type")
 	path := r.FormValue("path")
 	if path == "" {
 		jsonError(w, "path wajib diisi", http.StatusBadRequest)
@@ -121,13 +160,21 @@ func (h *FileHandler) handleUpload(w http.ResponseWriter, r *http.Request, bucke
 		return
 	}
 
-	// Baca sebagian untuk deteksi MIME lebih akurat
+	// The stored extension decides the Content-Type the file is later served
+	// with, so it is the control that actually matters. Uploading "x.html" into
+	// website-assets — a publicly served bucket — would otherwise mean stored XSS
+	// on the API origin, and ".svg" is scriptable too.
+	if !allowedExtension(bucket, path) {
+		jsonError(w, "ekstensi file tidak diizinkan", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	// Sniff the real content. The multipart part's Content-Type header is
+	// attacker-supplied and was previously trusted whenever it was non-empty,
+	// which let any payload through by simply claiming "image/png".
 	buf := make([]byte, 512)
 	n, _ := file.Read(buf)
-	detected := http.DetectContentType(buf[:n])
-	if mimeType == "" {
-		mimeType = detected
-	}
+	mimeType := canonicalMIME(http.DetectContentType(buf[:n]))
 	// Rewind tidak mungkin pada multipart — gabung buf dan sisa file
 	combined := io.MultiReader(bytes.NewReader(buf[:n]), file)
 
@@ -167,11 +214,47 @@ func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// authorizeSignedURL gates minting. A signed URL is a bearer capability: once
+// issued it works for an hour for anyone holding the link, so who may mint one
+// has to be checked as carefully as who may read the file directly.
+//
+// Without this any logged-in santri could mint a URL for `avatars/santri/<any
+// other uuid>/profile.webp` and read every child's photo — the signature check
+// on the serving route was the only gate, and it happily verifies whatever was
+// signed.
+func authorizeSignedURL(r *http.Request, bucket, path string) (ok bool, message string) {
+	role := middleware.RoleFromCtx(r.Context())
+	if bucket != storage.BucketAvatars {
+		// The other buckets are served unsigned anyway; refuse rather than mint a
+		// capability for an arbitrary attacker-supplied bucket name.
+		return false, "signed URL hanya berlaku untuk avatar"
+	}
+	if strings.Contains(path, "..") {
+		return false, "path tidak valid"
+	}
+	// Staff legitimately render other people's avatars (kartu absensi, panel
+	// manajemen santri). Santri may only mint for their own.
+	switch role {
+	case "admin", "guru", "pentashih":
+		return true, ""
+	case "santri":
+		if ownsAvatarPath(role, middleware.UserIDFromCtx(r.Context()), path) {
+			return true, ""
+		}
+		return false, "hanya pemilik yang dapat mengakses foto profil ini"
+	}
+	return false, "tidak diizinkan"
+}
+
 func (h *FileHandler) SignedURL(w http.ResponseWriter, r *http.Request) {
 	bucket := r.URL.Query().Get("bucket")
 	path := r.URL.Query().Get("path")
 	if bucket == "" || path == "" {
 		jsonError(w, "bucket dan path wajib diisi", http.StatusBadRequest)
+		return
+	}
+	if ok, msg := authorizeSignedURL(r, bucket, path); !ok {
+		jsonError(w, msg, http.StatusForbidden)
 		return
 	}
 	baseURL := r.URL.Scheme + "://" + r.Host

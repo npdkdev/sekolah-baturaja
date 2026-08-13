@@ -346,6 +346,14 @@ func (h *MediaPlayerHandler) UpdateSettings(w http.ResponseWriter, r *http.Reque
 		jsonError(w, "id pengaturan wajib diisi", http.StatusBadRequest)
 		return
 	}
+	// The {id} here is a user_id, so an unchecked value is a direct object
+	// reference to somebody else's row. GetSettings already gates on this; the
+	// write path did not, which let any logged-in user rewrite another user's
+	// media player state.
+	if id != callerID && middleware.RoleFromCtx(ctx) != "admin" {
+		jsonError(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	// Typed pointers rather than map[string]any: a partial update needs
 	// "absent" to be distinguishable from "zero", and playback_position is an
