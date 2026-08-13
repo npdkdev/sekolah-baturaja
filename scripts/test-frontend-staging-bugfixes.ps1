@@ -128,7 +128,7 @@ Add-Check "santri avatar upload persists avatar path after storage upload" {
 
 Add-Check "restored santri fields are selected and editable" {
   $component = Read-Text "src/components/dashboard/admin/SantriManagement.jsx"
-  $migration = Read-Text "supabase/migrations/20260624002100_santri_legacy_fields_and_media_player.sql"
+  $migration = Read-Text "db/migrations/20260624002100_santri_legacy_fields_and_media_player.sql"
   foreach ($field in @("tanggal_pendaftaran", "nama_ayah", "nama_ibu", "no_kk", "no_nik", "berkas_foto", "berkas_akta", "berkas_kk", "berkas_form", "link_qiroati")) {
     if ($component -notmatch $field) { throw "component missing $field" }
     if ($migration -notmatch $field) { throw "migration missing $field" }
@@ -167,7 +167,7 @@ Add-Check "santri form assigns active class for digital attendance" {
 Add-Check "guru dashboard restores scoped class transfer action" {
   $dashboard = Read-Text "src/components/dashboard/GuruDashboard.jsx"
   $modal = Read-Text "src/components/dashboard/guru/StudentTransferModal.jsx"
-  $migration = Read-Text "supabase/migrations/20260723000100_guru_student_class_transfer.sql"
+  $migration = Read-Text "db/migrations/20260723000100_guru_student_class_transfer.sql"
 
   if ($dashboard -notmatch "StudentTransferModal") { throw "guru transfer modal is not mounted" }
   if ($dashboard -notmatch "openTransferModal\(santri\)") { throw "transfer action is not wired to each santri row" }
@@ -367,7 +367,7 @@ console.log('ok');
   if ($LASTEXITCODE -ne 0 -or $output -notmatch "ok") { throw "alternate santri session resolution failed" }
 
   $adapter = Read-Text "src/lib/attendanceAdapters.js"
-  $migration = Read-Text "supabase/migrations/20260721000200_attendance_actual_session.sql"
+  $migration = Read-Text "db/migrations/20260721000200_attendance_actual_session.sql"
   if ($adapter -notmatch "attended_session") { throw "attendance payload does not store actual session" }
   if ($migration -notmatch "add column if not exists attended_session text") { throw "actual session migration is missing" }
 }
@@ -413,7 +413,7 @@ Add-Check "attendance recap filters santri by registered session" {
 
 Add-Check "admin edit and table selection can migrate TPQ PTPT and adult" {
   $management = Read-Text "src/components/dashboard/admin/SantriManagement.jsx"
-  $migration = Read-Text "supabase/migrations/20260721000300_change_santri_category_ptpt.sql"
+  $migration = Read-Text "db/migrations/20260721000300_change_santri_category_ptpt.sql"
   if ($management -notmatch "Migrasi ke PTPT") { throw "edit form PTPT migration is missing" }
   if ($management -notmatch "Migrasi ke Dewasa") { throw "edit form adult migration is missing" }
   if ($management -notmatch "handleBulkMigration\('PTPT'\)") { throw "bulk PTPT migration is missing" }

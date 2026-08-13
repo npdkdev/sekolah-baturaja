@@ -9,7 +9,7 @@ const [adapter, publicAttendance, adminAttendance, migration] = await Promise.al
   readFile(new URL('../src/lib/attendanceAdapters.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/pages/DigitalAttendancePage.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/dashboard/admin/DigitalAttendance.jsx', import.meta.url), 'utf8'),
-  readFile(new URL('../supabase/migrations/20260722000200_santri_first_attendance_per_day.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../db/migrations/20260722000200_santri_first_attendance_per_day.sql', import.meta.url), 'utf8'),
 ]);
 
 assert.match(adapter, /normalizeAttendanceSessionName\(santri\?\.sesi_mengaji \|\| santri\?\.class\?\.sesi \|\| fallback\)/);

@@ -22,8 +22,8 @@ const [management, edgeFunction, validation, restrictionMigration, enablementMig
   readFile(new URL('../src/components/dashboard/admin/GuruManagement.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/functions/manage-user/index.ts', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/functions/_shared/validation.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../supabase/migrations/20260722000100_restrict_admin_to_official_email.sql', import.meta.url), 'utf8'),
-  readFile(new URL('../supabase/migrations/20260723000200_enable_guru_admin_roles.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../db/migrations/20260722000100_restrict_admin_to_official_email.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../db/migrations/20260723000200_enable_guru_admin_roles.sql', import.meta.url), 'utf8'),
 ]);
 
 assert.match(management, /AVAILABLE_ROLES\s*=\s*\[[^\]]*['"]Admin['"]/);

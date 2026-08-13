@@ -1,11 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$seed = Join-Path $root "supabase/seed.sql"
-$migrationDir = Join-Path $root "supabase/migrations"
+$seed = Join-Path $root "db/seed.sql"
+$migrationDir = Join-Path $root "db/migrations"
 
 if (!(Test-Path $seed)) {
-  Write-Error "supabase/seed.sql not found."
+  Write-Error "db/seed.sql not found."
   exit 1
 }
 

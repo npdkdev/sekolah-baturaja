@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const [page, migration] = await Promise.all([
   readFile(new URL('../src/pages/RandomNamePage.jsx', import.meta.url), 'utf8'),
-  readFile(new URL('../supabase/migrations/20260723000300_increment_santri_points.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../db/migrations/20260723000300_increment_santri_points.sql', import.meta.url), 'utf8'),
 ]);
 
 assert.match(page, /const \[isUpdatingPoints, setIsUpdatingPoints\]/);

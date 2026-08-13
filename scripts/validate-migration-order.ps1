@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$migrationDir = Join-Path $root "supabase/migrations"
+$migrationDir = Join-Path $root "db/migrations"
 
 if (!(Test-Path $migrationDir)) {
   Write-Error "Migration directory not found."

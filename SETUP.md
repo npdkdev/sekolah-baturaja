@@ -69,7 +69,7 @@ docker-compose up -d --build
 Perintah ini akan:
 - Membangun image API dari `Dockerfile`
 - Menjalankan Postgres 16
-- Menerapkan semua migrasi otomatis (45 file di `supabase/migrations/`)
+- Menerapkan semua migrasi otomatis (45 file di `db/migrations/`)
 - Membuat akun admin awal
 
 Cek status:

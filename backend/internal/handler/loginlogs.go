@@ -22,7 +22,7 @@ import (
 // login-attempt recorder.
 //
 // Ported from the Supabase `public.record_login_attempt` RPC
-// (supabase/migrations/20260716000300_login_activity_logs.sql). Same privacy
+// (db/migrations/20260716000300_login_activity_logs.sql). Same privacy
 // stance as the RPC: no passwords, no tokens, no raw user-agent. The
 // `user_agent` column exists on the table but is deliberately left NULL —
 // the migration comment states the function records attempts "without

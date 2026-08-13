@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$paths = @("supabase", "scripts", "docs") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
+$paths = @("db", "scripts", "docs") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
 
 $secretPatterns = @(
   "eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}",

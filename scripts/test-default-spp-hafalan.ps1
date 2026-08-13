@@ -20,13 +20,13 @@ function Read-Text([string]$RelativePath) {
 }
 
 Add-Check "migration adds optional default SPP with minimum constraint" {
-  $migration = Read-Text "supabase/migrations/20260716000100_santri_default_spp_and_hafalan_curriculum.sql"
+  $migration = Read-Text "db/migrations/20260716000100_santri_default_spp_and_hafalan_curriculum.sql"
   if ($migration -notmatch "default_spp_amount numeric\(12,2\)") { throw "default SPP column missing" }
   if ($migration -notmatch "default_spp_amount >= 10000") { throw "default SPP constraint missing" }
 }
 
 Add-Check "official curriculum contains 103 ordered items" {
-  $migration = Read-Text "supabase/migrations/20260716000100_santri_default_spp_and_hafalan_curriculum.sql"
+  $migration = Read-Text "db/migrations/20260716000100_santri_default_spp_and_hafalan_curriculum.sql"
   $rows = [regex]::Matches($migration, "(?m)^\s*\('(Doa|Sholat|Surat)',\s*'[1-6]',\s*\d+,\s*'.*'\),?\s*$")
   if ($rows.Count -ne 103) { throw "expected 103 curriculum rows, found $($rows.Count)" }
   $doa = @($rows | Where-Object { $_.Groups[1].Value -eq "Doa" }).Count

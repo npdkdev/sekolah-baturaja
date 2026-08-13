@@ -10,7 +10,7 @@ if ($Target -match "prod|production") {
 }
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
-$docsAndScripts = @("supabase", "scripts") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
+$docsAndScripts = @("db", "scripts") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
 $unsafe = @()
 
 foreach ($path in $docsAndScripts) {

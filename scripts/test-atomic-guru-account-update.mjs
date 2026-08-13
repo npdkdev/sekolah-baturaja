@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const migration = await readFile(
-  new URL('../supabase/migrations/20260722000300_atomic_guru_account_update.sql', import.meta.url),
+  new URL('../db/migrations/20260722000300_atomic_guru_account_update.sql', import.meta.url),
   'utf8',
 );
 const edgeFunction = await readFile(

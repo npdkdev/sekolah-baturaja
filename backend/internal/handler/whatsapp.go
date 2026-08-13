@@ -15,7 +15,7 @@ import (
 
 // WhatsAppHandler serves the per-jilid WhatsApp invite links used by the admin
 // mutation flow (whatsapp_group_links, defined in
-// supabase/migrations/20260721000400_whatsapp_group_links.sql).
+// db/migrations/20260721000400_whatsapp_group_links.sql).
 //
 // The table has no deleted_at column — is_active is the soft-delete flag, which
 // is why bulk-deactivate UPDATEs is_active = false instead of deleting rows.

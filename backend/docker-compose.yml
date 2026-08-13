@@ -10,8 +10,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init:/docker-entrypoint-initdb.d
-      - ../supabase/migrations:/migrations:ro
-      - ../supabase/seed.sql:/seed.sql:ro
+      - ../db/migrations:/migrations:ro
+      - ../db/seed.sql:/seed.sql:ro
     ports:
       - "5432:5432"
     healthcheck:

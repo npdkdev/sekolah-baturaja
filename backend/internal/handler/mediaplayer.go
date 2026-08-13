@@ -16,7 +16,7 @@ import (
 )
 
 // MediaPlayerHandler serves the two media-player tables defined in
-// supabase/migrations/20260624002100_santri_legacy_fields_and_media_player.sql:
+// db/migrations/20260624002100_santri_legacy_fields_and_media_player.sql:
 // music_files (the shared playlist) and media_player_settings (per-user playback
 // state). Every column name below was read off that migration.
 //
