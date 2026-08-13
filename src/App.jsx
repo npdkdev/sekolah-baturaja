@@ -45,8 +45,6 @@ const RandomNamePage = lazy(() => import('@/pages/RandomNamePage'));
 const TopScorePage = lazy(() => import('@/pages/TopScorePage'));
 import ProtectedRoute from '@/components/ProtectedRoute';
 import ScrollToTopButton from '@/components/ScrollToTopButton';
-import { DndProvider } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
 import { publicFetch } from '@/lib/apiClient';
 import { enableDeferredFeatures, enableGameFeatures } from '@/lib/featureFlags';
 
@@ -158,7 +156,6 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <DndProvider backend={HTML5Backend}>
           <Router>
             <RouteLogger />
             <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300">
@@ -231,7 +228,6 @@ function App() {
               <ScrollToTopButton />
             </div>
           </Router>
-        </DndProvider>
       </AuthProvider>
     </ThemeProvider>
   );

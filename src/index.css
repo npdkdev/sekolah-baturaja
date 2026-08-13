@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800&family=Montserrat:wght@400;500;700;900&family=Poppins:wght@400;500;600;700&family=Cinzel:wght@700&display=swap');
+/* Google Fonts dimuat lewat <link> di index.html, bukan @import di sini.
+   @import memaksa rantai serial: index.css harus selesai diunduh dan di-parse
+   dulu sebelum permintaan CSS font bahkan dimulai, lalu woff2-nya menyusul —
+   tiga tingkat render-blocking. Sebagai <link> di HTML, keduanya berjalan
+   paralel sejak awal. */
 
 @tailwind base;
 @tailwind components;

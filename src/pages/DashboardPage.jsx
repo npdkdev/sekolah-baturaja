@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -108,8 +110,15 @@ const DashboardPage = () => {
     );
   };
 
+  // DndProvider dipasang di sini, bukan di root aplikasi.
+  //
+  // react-dnd hanya dipakai empat komponen dashboard (ClassManagement,
+  // AdultClassManagement, HafalanItemDraggable, HafalanDisplay), tapi
+  // sebelumnya membungkus seluruh App — sehingga setiap pengunjung halaman
+  // publik ikut mengunduh dan menginisialisasinya tanpa pernah memakainya.
+  // Di sini ia ikut chunk DashboardPage yang memang lazy.
   return (
-    <>
+    <DndProvider backend={HTML5Backend}>
       <Helmet>
         <title>Dashboard - LPQ Al-Fath Maulana</title>
         <meta name="description" content="Dashboard sistem manajemen LPQ Al-Fath Maulana" />
@@ -139,7 +148,7 @@ const DashboardPage = () => {
           {renderDashboard()}
         </div>
       </div>
-    </>
+    </DndProvider>
   );
 };
 

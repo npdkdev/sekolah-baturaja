@@ -15,7 +15,89 @@
 		     @import di src/index.css. -->
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link rel="stylesheet" href="/loading-screen.css" />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800&amp;family=Montserrat:wght@400;500;700;900&amp;family=Poppins:wght@400;500;600;700&amp;family=Cinzel:wght@700&amp;display=swap"
+		/>
+		<!-- Di-inline: berkasnya 1,9 KB tapi sebagai <link> ia jadi permintaan
+		     render-blocking tersendiri yang menahan paint pertama. -->
+		<style>/* Inline loading screen — renders instantly before any JS or CSS bundle */
+#lpq-loading {
+	position: fixed;
+	inset: 0;
+	z-index: 9999;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	background: #0c1220;
+	transition: opacity 0.4s ease, transform 0.4s ease;
+}
+#lpq-loading.lpq-loading-hide {
+	opacity: 0;
+	transform: scale(1.02);
+	pointer-events: none;
+}
+#lpq-loading::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: radial-gradient(ellipse 60% 50% at 50% 45%, rgba(6, 182, 212, 0.08) 0%, rgba(139, 92, 246, 0.06) 50%, transparent 100%);
+	pointer-events: none;
+}
+.lpq-loading-text {
+	font-family: 'Cinzel', serif;
+	font-size: 1.5rem;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.92);
+	letter-spacing: 0.04em;
+	margin-bottom: 0.35rem;
+	animation: lpq-text-pulse 2.4s ease-in-out 0.15s infinite;
+}
+.lpq-loading-subtitle {
+	font-family: 'Cinzel', serif;
+	font-size: 0.75rem;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.45);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	margin-bottom: 1.25rem;
+	animation: lpq-text-pulse 2.4s ease-in-out 0.3s infinite;
+}
+.lpq-loading-progress {
+	width: 120px;
+	height: 2px;
+	background: rgba(255, 255, 255, 0.06);
+	border-radius: 2px;
+	overflow: hidden;
+}
+.lpq-loading-progress-bar {
+	width: 40%;
+	height: 100%;
+	background: linear-gradient(90deg, rgba(6, 182, 212, 0.5), rgba(139, 92, 246, 0.5));
+	border-radius: 2px;
+	animation: lpq-progress-slide 1.6s ease-in-out infinite;
+}
+@keyframes lpq-text-pulse {
+	0%, 100% { opacity: 0.7; }
+	50% { opacity: 1; }
+}
+@keyframes lpq-progress-slide {
+	0% { transform: translateX(-100%); }
+	100% { transform: translateX(350%); }
+}
+@media (prefers-reduced-motion: reduce) {
+	#lpq-loading::before,
+	.lpq-loading-text,
+	.lpq-loading-subtitle,
+	.lpq-loading-progress-bar {
+		animation: none !important;
+	}
+	.lpq-loading-text,
+	.lpq-loading-subtitle {
+		opacity: 0.85;
+	}
+}</style>
 	</head>
 	<body>
 		<!-- Inline loading shell — visible before React hydrates -->

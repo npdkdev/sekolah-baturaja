@@ -11,27 +11,42 @@ import StarBorder from '@/components/reactbits/StarBorder/StarBorder';
 import SectionKicker from './SectionKicker';
 import { imageOf, LOCAL_LOGO, safeArray } from './homeUtils';
 
-// Menunda pemasangan sampai browser selesai dengan pekerjaan render awal.
+// Menunda pemasangan dekorasi WebGL sampai halaman benar-benar selesai memuat.
 //
-// React.lazy mulai mengunduh chunk-nya begitu komponen dirender, jadi tanpa
-// penundaan ini three.js (720 KB) dan model .glb (1,4 MB) berebut bandwidth
-// dengan teks hero — elemen LCP halaman. Menundanya sampai idle membuat
-// konten utama tampil dulu, baru dekorasi 3D menyusul.
+// React.lazy mulai mengunduh chunk-nya begitu komponen dirender. Menunggu
+// requestIdleCallback saja tidak cukup: idle bisa terjadi sebelum LCP, sehingga
+// three.js (720 KB), model .glb (1,4 MB), dan HDRI tetap masuk rantai kritis —
+// trace menunjukkan rantai itu mencapai 5,4 detik. Menunggu event `load` dulu
+// menjamin pengunduhan terjadi setelah konten utama tergambar.
+//
+// Keduanya (LightPillar dan ModelViewer) menarik three.js, jadi keduanya harus
+// ditunda; menyisakan salah satunya membuat three.js tetap di jalur kritis.
 const useDeferredMount = () => {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
-    // Hormati preferensi hemat data dan koneksi lambat: di sana model 3D
-    // dekoratif seharga 2 MB bukan pertukaran yang pantas.
+    // Hormati preferensi hemat data dan koneksi lambat: di sana dekorasi WebGL
+    // seharga 2 MB bukan pertukaran yang pantas.
     const conn = navigator.connection;
     if (conn?.saveData || /(^|-)2g$/.test(conn?.effectiveType || '')) return undefined;
 
-    const schedule = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 1200));
-    const cancel = window.cancelIdleCallback || window.clearTimeout;
-    const id = schedule(() => setReady(true), { timeout: 3000 });
-    return () => cancel(id);
+    let idleId;
+    const schedule = () => {
+      const idle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 300));
+      idleId = idle(() => setReady(true), { timeout: 2000 });
+    };
+
+    if (document.readyState === 'complete') {
+      schedule();
+      return () => (window.cancelIdleCallback || window.clearTimeout)(idleId);
+    }
+    window.addEventListener('load', schedule, { once: true });
+    return () => {
+      window.removeEventListener('load', schedule);
+      if (idleId !== undefined) (window.cancelIdleCallback || window.clearTimeout)(idleId);
+    };
   }, []);
 
   return ready;
@@ -111,7 +126,7 @@ const HeroSection = ({ content, currentSlide, setCurrentSlide, stats }) => {
     <section className="home-hero" aria-labelledby="home-hero-title">
       <div className="home-hero__backdrop" />
       <Suspense fallback={<div className="home-hero__pillar-fallback" aria-hidden="true" />}>
-        <LightPillar
+        {show3D && <LightPillar
           topColor="#9dc1c7"
           bottomColor="#00eb9d"
           intensity={1}
@@ -124,7 +139,7 @@ const HeroSection = ({ content, currentSlide, setCurrentSlide, stats }) => {
           interactive={quality === 'high'}
           mixBlendMode="color-dodge"
           quality={quality}
-        />
+        />}
       </Suspense>
       <div className="home-hero__grain" aria-hidden="true" />
       <div className="home-hero__quran-model" aria-hidden="true">
