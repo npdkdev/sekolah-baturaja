@@ -1,0 +1,23 @@
+# Konteks build mencakup root repo (frontend + backend).
+# node_modules dibuang karena `npm ci` di dalam image yang memasangnya —
+# menyalin versi host bisa membawa binary platform lain.
+node_modules
+dist
+.git
+.github
+
+# Jangan pernah masuk ke image: berisi kredensial.
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Tidak dibutuhkan saat build.
+backend/.gocache
+db
+docs
+scripts
+.claude
+.agents

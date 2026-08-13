@@ -76,6 +76,13 @@ func main() {
 	r.Use(corsMiddleware)
 
 	// ── Public: auth ─────────────────────────────────────────────────────────
+	// Liveness probe. Also gives the container healthcheck something cheap to
+	// hit that does not touch the database.
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte("ok"))
+	})
+
 	r.Post("/api/auth/login", authHandler.Login)
 	r.Post("/api/auth/refresh", authHandler.Refresh)
 	// Logout only clears the refresh cookie, so it must work even when the access
@@ -158,6 +165,16 @@ func main() {
 		r.Mount("/api/music-files", mediaPlayerHandler.MusicRoutes())
 		r.Mount("/api/media-player-settings", mediaPlayerHandler.SettingsRoutes())
 	})
+
+	// Frontend. Registered last, as the fallback for everything no API route
+	// claimed, so it can never shadow an endpoint. Absent in development, where
+	// Vite serves the app on its own port.
+	if spa := handler.NewSPA(cfg.StaticDir); spa != nil {
+		r.NotFound(spa.ServeHTTP)
+		log.Printf("serving frontend from %s", cfg.StaticDir)
+	} else {
+		log.Printf("no frontend at %s — API only", cfg.StaticDir)
+	}
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

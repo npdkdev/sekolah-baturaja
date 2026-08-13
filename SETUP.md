@@ -67,19 +67,27 @@ docker-compose up -d --build
 ```
 
 Perintah ini akan:
-- Membangun image API dari `Dockerfile`
+- Membangun satu image berisi API Go **dan** frontend yang sudah di-build
 - Menjalankan Postgres 16
-- Menerapkan semua migrasi otomatis (45 file di `db/migrations/`)
+- Menerapkan semua migrasi otomatis (46 file di `db/migrations/`)
 - Membuat akun admin awal
+
+Node hanya dipakai di tahap build image; image yang berjalan tidak memuat
+Node, npm, maupun web server terpisah — hanya satu binary Go yang menyajikan
+API sekaligus berkas frontend.
 
 Cek status:
 
 ```bash
 docker-compose ps
-docker-compose logs -f api   # lihat log API
+docker-compose logs -f app   # lihat log
 ```
 
-API siap saat log menampilkan `server running on :8080`.
+Siap saat log menampilkan `server running on :8080` dan
+`serving frontend from /app/web`.
+
+**Buka `http://localhost:3000`** — aplikasi dan API berada di origin yang
+sama, jadi tidak ada konfigurasi CORS yang perlu dicocokkan.
 
 ### Akun admin default
 
@@ -92,36 +100,34 @@ API siap saat log menampilkan `server running on :8080`.
 
 ---
 
-## 4 · Konfigurasi frontend
+## 4 · Frontend saat pengembangan (opsional)
+
+Langkah 3 sudah menyajikan frontend. Bagian ini hanya perlu kalau kamu mau
+hot-reload saat menggarap UI.
 
 ```bash
 # dari root repo (bukan backend/)
 cd ..
 cp .env.example .env.local
-```
-
-`.env.local` sudah benar untuk dev lokal:
-
-```env
-VITE_API_URL=http://localhost:8080
-```
-
-Untuk production, ubah ke domain/IP VPS:
-
-```env
-VITE_API_URL=https://api.domainmu.id
-```
-
----
-
-## 5 · Jalankan frontend (dev)
-
-```bash
 npm install
-npm run dev
+npm run dev -- --port 5173
 ```
 
-Buka `http://localhost:3000`.
+Isi `.env.local`:
+
+```env
+VITE_API_URL=http://localhost:3000
+```
+
+Karena dev server berada di origin berbeda dari API, tambahkan origin-nya ke
+`CORS_ORIGIN` di `backend/.env` lalu `docker-compose up -d app`:
+
+```env
+CORS_ORIGIN=http://localhost:5173
+```
+
+Untuk deploy, `VITE_API_URL` dibiarkan kosong (sudah diatur di Dockerfile)
+karena frontend dan API berbagi satu origin.
 
 ---
 

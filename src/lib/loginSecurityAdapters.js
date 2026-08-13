@@ -2,7 +2,7 @@ import apiClient from '@/lib/apiClient';
 
 export const LOGIN_SECURITY_CONSENT_KEY = 'lpq_login_security_notice_v1';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+import { API_URL } from '@/lib/apiBase';
 
 export const fetchLoginLogs = async ({ page = 0, pageSize = 15, searchTerm = '' } = {}) => {
   const params = new URLSearchParams({ page, limit: pageSize });

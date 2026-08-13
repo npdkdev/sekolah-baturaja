@@ -12,3 +12,6 @@ server
 # Uploaded files live in a Docker volume; a local bind mount must never be
 # committed (santri photos are personal data).
 uploads/
+
+# Per-machine compose overrides (port remapping, dsb).
+docker-compose.override.yml

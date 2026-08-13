@@ -17,7 +17,10 @@ type Config struct {
 	AccessTokenTTL   int // minutes
 	RefreshTokenTTL  int // days
 	UploadDir        string
-	MaxUploadBytes   int64
+	// StaticDir holds the built frontend. Empty or missing means API-only,
+	// which is the development setup where Vite serves the app.
+	StaticDir      string
+	MaxUploadBytes int64
 	// CookieSecure marks the refresh cookie Secure so it is only ever sent over
 	// HTTPS. Defaults to true; set COOKIE_SECURE=false only for plain-http local
 	// development, never in production.
@@ -38,6 +41,7 @@ func Load() (*Config, error) {
 		AccessTokenTTL:   getEnvInt("ACCESS_TOKEN_TTL_MINUTES", 15),
 		RefreshTokenTTL:  getEnvInt("REFRESH_TOKEN_TTL_DAYS", 30),
 		UploadDir:        getEnv("UPLOAD_DIR", "/app/uploads"),
+		StaticDir:        getEnv("STATIC_DIR", "/app/web"),
 		MaxUploadBytes:   int64(getEnvInt("MAX_UPLOAD_MB", 20)) * 1024 * 1024,
 		CookieSecure:     getEnv("COOKIE_SECURE", "true") != "false",
 	}

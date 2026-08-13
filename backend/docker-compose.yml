@@ -21,8 +21,14 @@ services:
       retries: 10
       start_period: 10s
 
-  api:
-    build: .
+  # Satu service menyajikan API dan frontend sekaligus. Tidak ada reverse proxy:
+  # klien terhubung langsung, jadi RemoteAddr adalah alamat asli dan rate limit
+  # login tidak perlu mempercayai X-Forwarded-For yang bisa dipalsukan.
+  app:
+    build:
+      # Konteks di root repo karena image juga mem-build frontend.
+      context: ..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:
@@ -30,7 +36,7 @@ services:
     volumes:
       - uploads:/app/uploads
     ports:
-      - "8080:8080"
+      - "3000:8080"
     depends_on:
       db:
         condition: service_healthy

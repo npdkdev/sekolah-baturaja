@@ -1,3 +1,4 @@
+import { API_URL } from '@/lib/apiBase';
 import apiClient, { publicFetch } from '@/lib/apiClient';
 
 const toDateText = (value) => value ? new Date(value).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
@@ -239,7 +240,7 @@ export const submitPublicFeedback = async ({ nama, name, email, phone, no_hp, me
     message: String(message || pesan || '').trim(),
   };
   if (!payload.message) throw new Error('Pesan wajib diisi.');
-  const apiUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/content/feedback`;
+  const apiUrl = `${API_URL}/api/content/feedback`;
   const res = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

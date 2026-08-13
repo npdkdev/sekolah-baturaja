@@ -1,3 +1,4 @@
+import { API_URL } from '@/lib/apiBase';
 import apiClient from '@/lib/apiClient';
 
 const AVATAR_BUCKET = 'avatars';
@@ -169,7 +170,6 @@ export const uploadAvatar = async ({ ownerType, ownerId, file }) => {
   // the path, so this is what authorizes the write.
   formData.append('path', path);
   const token = apiClient.getToken();
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
   const res = await fetch(`${API_URL}/api/upload/avatar`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
@@ -268,7 +268,6 @@ export const uploadWebsiteAsset = async ({ folder, key, file }) => {
   // Same as the avatar upload: the handler reads `path`, not folder/key.
   formData.append('path', path);
   const token = apiClient.getToken();
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
   const res = await fetch(`${API_URL}/api/upload/asset`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
