@@ -186,20 +186,57 @@ type userRow struct {
 // resolveUser mencari user di santri (nomor_induk/panggilan) atau guru (email).
 // Santri dicek duluan; jika tidak ketemu baru coba guru/admin/pentashih.
 func (h *AuthHandler) resolveUser(ctx context.Context, username string) (id, role, hash string, err error) {
-	// Coba santri: login by nomor_induk_qiroati atau nama_panggilan
+	// Santri: nomor_induk_qiroati first. It carries a unique index
+	// (santri_nomor_induk_qiroati_unique), so it identifies exactly one account.
 	var row userRow
 	err = h.db.QueryRow(ctx, `
 		SELECT id, 'santri', COALESCE(password,'')
 		FROM santri
-		WHERE (nomor_induk_qiroati = $1 OR LOWER(nama_panggilan) = LOWER($1))
-		  AND status = 'Aktif'
-		LIMIT 1
+		WHERE nomor_induk_qiroati = $1 AND status = 'Aktif'
 	`, username).Scan(&row.id, &row.role, &row.hash)
 	if err == nil {
 		return row.id, row.role, row.hash, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", "", "", err
+	}
+
+	// Nickname fallback. nama_panggilan has NO unique constraint and nicknames
+	// collide constantly in a school, yet this used to be OR-ed into the query
+	// above with a bare LIMIT 1 — so which classmate's row came back was
+	// whatever Postgres happened to return. Paired with the legacy plaintext
+	// passwords that meant a santri who knew a namesake's nomor induk could land
+	// in that namesake's account.
+	//
+	// Resolve only when the nickname is unambiguous among active santri;
+	// otherwise refuse and let them use their nomor induk.
+	rows, err := h.db.Query(ctx, `
+		SELECT id, COALESCE(password,'')
+		FROM santri
+		WHERE LOWER(nama_panggilan) = LOWER($1) AND status = 'Aktif'
+		LIMIT 2
+	`, username)
+	if err != nil {
+		return "", "", "", err
+	}
+	matches := make([]userRow, 0, 2)
+	for rows.Next() {
+		var m userRow
+		if err := rows.Scan(&m.id, &m.hash); err != nil {
+			rows.Close()
+			return "", "", "", err
+		}
+		matches = append(matches, m)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return "", "", "", err
+	}
+	if len(matches) == 1 {
+		return matches[0].id, "santri", matches[0].hash, nil
+	}
+	if len(matches) > 1 {
+		return "", "", "", errors.New("nama panggilan tidak unik")
 	}
 
 	// Coba guru/admin/pentashih: login by email
