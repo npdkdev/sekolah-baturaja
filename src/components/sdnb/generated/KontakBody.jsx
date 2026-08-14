@@ -20,7 +20,7 @@ import { s as __dcs } from '@/lib/dcStyle';
 import '@/styles/sdnb-kontak.css';
 
 const KontakBody = (vals = {}) => {
-  const { bantuan, belumKirim, chips, hitungPesan, hitungStyle, jam, kirim, labelAlamat, noTiket, orang, peranOpsi, petaBaris1, petaBaris2, petaNama, petaTampil, petaTautan, reset, ringkasKontak, ringkasNama, salinAlamat, setKontak, setNama, setPesan, setTopik, statusDot, statusStyle, statusText, sudahKirim, toast, toastAda, tombolStyle, topikOpsi } = vals;
+  const { bantuan, belumKirim, chips, copy = {}, hitungPesan, hitungStyle, jam, kirim, labelAlamat, noTiket, orang, peranOpsi, petaBaris1, petaBaris2, petaNama, petaTampil, petaTautan, reset, ringkasKontak, ringkasNama, salinAlamat, setKontak, setNama, setPesan, setTopik, statusDot, statusStyle, statusText, successDescription, sudahKirim, toast, toastAda, tombolStyle, topikOpsi } = vals;
   return (
     <>
 <section id="kontak" style={{ maxWidth: "1240px", margin: "0 auto", padding: "26px 28px 0" }}>
@@ -28,12 +28,12 @@ const KontakBody = (vals = {}) => {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div style={{ width: "44px", height: "2px", background: "linear-gradient(90deg,var(--sekolah-aksen-pekat),var(--sekolah-aksen-ujung))" }}></div>
-            <span style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".16em", textTransform: "uppercase", color: "var(--sekolah-aksen-pekat)" }}>Hubungi sekolah</span>
+            <span style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".16em", textTransform: "uppercase", color: "var(--sekolah-aksen-pekat)" }}>{copy.heroEyebrow}</span>
           </div>
-          <h1 className="heroh1" style={{ margin: "20px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "70px", lineHeight: ".94", letterSpacing: "-.048em", fontWeight: "800", color: "#171827" }}>Pintu kantor<br /><span style={{ background: "linear-gradient(115deg,var(--sekolah-aksen-pekat),var(--sekolah-aksen-tengah-2) 45%,var(--sekolah-aksen-ujung))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent" }}>selalu terbuka.</span></h1>
+          <h1 className="heroh1" style={{ margin: "20px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "70px", lineHeight: ".94", letterSpacing: "-.048em", fontWeight: "800", color: "#171827" }}>{copy.heroTitle}<br /><span style={{ background: "linear-gradient(115deg,var(--sekolah-aksen-pekat),var(--sekolah-aksen-tengah-2) 45%,var(--sekolah-aksen-ujung))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent" }}>{copy.heroAccent}</span></h1>
         </div>
         <div style={{ maxWidth: "360px" }}>
-          <p style={{ margin: "0", fontSize: "15.5px", lineHeight: "1.68", color: "#4c5175", textWrap: "pretty" }}>Tata usaha menjawab telepon dan surel pada hari kerja. Untuk urusan yang perlu bertemu langsung, kunjungan orang tua dibuka setiap Rabu pukul 09.00.</p>
+          <p style={{ margin: "0", fontSize: "15.5px", lineHeight: "1.68", color: "#4c5175", textWrap: "pretty" }}>{copy.heroDescription}</p>
           <div style={__dcs(statusStyle)}>
             <span style={__dcs(`position:relative;width:9px;height:9px;flex:none;border-radius:50%;background:${statusDot}`)}>
               <span style={__dcs(`position:absolute;inset:0;border-radius:50%;background:${statusDot};animation:ping 2.2s cubic-bezier(0,.2,.8,1) infinite`)}></span>
@@ -59,12 +59,12 @@ const KontakBody = (vals = {}) => {
       <div id="pesan" style={{ position: "relative", overflow: "hidden", padding: "34px 36px 36px", borderRadius: "30px", background: "rgba(255,255,255,.56)", backdropFilter: "blur(28px) saturate(190%)", WebkitBackdropFilter: "blur(28px) saturate(190%)", border: "1px solid rgba(255,255,255,.85)", boxShadow: "0 32px 68px -26px rgba(55,65,120,.55),inset 0 1px 0 rgba(255,255,255,.95)" }}>
         {(belumKirim) && (<>
           <div>
-            <div style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--sekolah-aksen-pekat)" }}>Formulir pesan</div>
-            <h2 style={{ margin: "10px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "30px", lineHeight: "1.14", letterSpacing: "-.03em", fontWeight: "800", color: "#171827" }}>Tulis pesan untuk sekolah</h2>
-            <p style={{ margin: "12px 0 0", maxWidth: "520px", fontSize: "14px", lineHeight: "1.65", color: "#565b7d" }}>Pesan masuk ke surel tata usaha dan dibalas paling lambat dua hari kerja.</p>
+            <div style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--sekolah-aksen-pekat)" }}>{copy.formEyebrow}</div>
+            <h2 style={{ margin: "10px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "30px", lineHeight: "1.14", letterSpacing: "-.03em", fontWeight: "800", color: "#171827" }}>{copy.formTitle}</h2>
+            <p style={{ margin: "12px 0 0", maxWidth: "520px", fontSize: "14px", lineHeight: "1.65", color: "#565b7d" }}>{copy.formDescription}</p>
 
             <div style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "8px" }}>
-              <div style={{ fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>Saya menghubungi sebagai</div>
+              <div style={{ fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>{copy.formRoleLabel}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {(peranOpsi || []).map((p, $index) => (<React.Fragment key={$index}>
                   <button onClick={p.pick} style={__dcs(p.style)}>{p.label}</button>
@@ -74,17 +74,17 @@ const KontakBody = (vals = {}) => {
 
             <div className="fld" style={{ marginTop: "22px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
               <div>
-                <div style={{ marginBottom: "7px", fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>Nama lengkap</div>
-                <input onInput={setNama} placeholder="Nama Anda" />
+                <div style={{ marginBottom: "7px", fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>{copy.nameLabel}</div>
+                <input onInput={setNama} placeholder={copy.namePlaceholder} />
               </div>
               <div>
-                <div style={{ marginBottom: "7px", fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>Nomor telepon atau surel</div>
-                <input onInput={setKontak} placeholder="08xx atau nama@surel.id" />
+                <div style={{ marginBottom: "7px", fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>{copy.contactLabel}</div>
+                <input onInput={setKontak} placeholder={copy.contactPlaceholder} />
               </div>
             </div>
 
             <div className="fld" style={{ marginTop: "14px" }}>
-              <div style={{ marginBottom: "7px", fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>Topik</div>
+              <div style={{ marginBottom: "7px", fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>{copy.topicLabel}</div>
               <select onChange={setTopik}>
                 {(topikOpsi || []).map((t, $index) => (<React.Fragment key={$index}>
                   <option value={t}>{t}</option>
@@ -94,14 +94,14 @@ const KontakBody = (vals = {}) => {
 
             <div className="fld" style={{ marginTop: "14px" }}>
               <div style={{ marginBottom: "7px", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
-                <span style={{ fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>Pesan</span>
+                <span style={{ fontSize: "12.5px", fontWeight: "700", color: "#3d4166" }}>{copy.messageLabel}</span>
                 <span style={__dcs(hitungStyle)}>{hitungPesan}</span>
               </div>
-              <textarea onInput={setPesan} rows="5" placeholder="Tuliskan pertanyaan atau keperluan Anda"></textarea>
+              <textarea onInput={setPesan} rows="5" placeholder={copy.messagePlaceholder}></textarea>
             </div>
 
             <div style={{ marginTop: "22px", display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
-              <button className="shine" onClick={kirim} style={__dcs(tombolStyle)}>Kirim pesan
+              <button className="shine" onClick={kirim} style={__dcs(tombolStyle)}>{copy.submitLabel}
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
               </button>
               <div style={{ fontSize: "12.5px", color: "#6d7192" }}>{bantuan}</div>
@@ -114,11 +114,11 @@ const KontakBody = (vals = {}) => {
             <div style={{ width: "64px", height: "64px", borderRadius: "22px", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg,var(--sekolah-aksen),var(--sekolah-aksen-tengah) 55%,var(--sekolah-aksen-ujung))", boxShadow: "0 20px 44px -16px rgba(95,105,235,.9),inset 0 1px 0 rgba(255,255,255,.6)", animation: "popin .5s cubic-bezier(.3,1.4,.4,1) both" }}>
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12.5 9.5 18 20 7"></path></svg>
             </div>
-            <h2 style={{ margin: "24px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "28px", lineHeight: "1.16", letterSpacing: "-.028em", fontWeight: "800", color: "#171827" }}>Pesan Anda tercatat</h2>
-            <p style={{ margin: "12px 0 0", maxWidth: "460px", fontSize: "14.5px", lineHeight: "1.68", color: "#4f5478" }}>Terima kasih, {ringkasNama}. Tata usaha akan membalas ke {ringkasKontak} paling lambat dua hari kerja. Nomor catatan pesan Anda {noTiket}.</p>
+            <h2 style={{ margin: "24px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "28px", lineHeight: "1.16", letterSpacing: "-.028em", fontWeight: "800", color: "#171827" }}>{copy.successTitle}</h2>
+            <p style={{ margin: "12px 0 0", maxWidth: "460px", fontSize: "14.5px", lineHeight: "1.68", color: "#4f5478" }}>{successDescription}</p>
             <div style={{ marginTop: "24px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-              <button className="shine" onClick={reset} style={{ position: "relative", overflow: "hidden", padding: "13px 20px", borderRadius: "15px", border: "0", cursor: "pointer", fontFamily: "inherit", fontSize: "13.5px", fontWeight: "700", color: "#fff", background: "linear-gradient(135deg,var(--sekolah-aksen),var(--sekolah-aksen-tengah) 55%,var(--sekolah-aksen-ujung))", boxShadow: "0 16px 34px -14px rgba(95,105,235,.9)" }}>Tulis pesan lain</button>
-              <a className="shine" href="/pendaftaran" style={{ position: "relative", overflow: "hidden", padding: "13px 20px", borderRadius: "15px", fontSize: "13.5px", fontWeight: "700", color: "#33375a", background: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.95)" }}>Buka formulir SPMB</a>
+              <button className="shine" onClick={reset} style={{ position: "relative", overflow: "hidden", padding: "13px 20px", borderRadius: "15px", border: "0", cursor: "pointer", fontFamily: "inherit", fontSize: "13.5px", fontWeight: "700", color: "#fff", background: "linear-gradient(135deg,var(--sekolah-aksen),var(--sekolah-aksen-tengah) 55%,var(--sekolah-aksen-ujung))", boxShadow: "0 16px 34px -14px rgba(95,105,235,.9)" }}>{copy.newMessageLabel}</button>
+              <a className="shine" href="/pendaftaran" style={{ position: "relative", overflow: "hidden", padding: "13px 20px", borderRadius: "15px", fontSize: "13.5px", fontWeight: "700", color: "#33375a", background: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.95)" }}>{copy.enrollmentButtonLabel}</a>
             </div>
           </div>
         </>)}
@@ -145,7 +145,7 @@ const KontakBody = (vals = {}) => {
             </div>
             <div style={{ display: "flex", flex: "none", gap: "8px" }}>
               {petaTautan && (
-                <a className="shine" href={petaTautan} target="_blank" rel="noopener noreferrer" style={{ position: "relative", overflow: "hidden", display: "inline-flex", alignItems: "center", padding: "11px 15px", borderRadius: "14px", fontSize: "12.5px", fontWeight: "700", color: "#33375a", background: "rgba(255,255,255,.9)", border: "1px solid rgba(255,255,255,1)", boxShadow: "0 14px 30px -14px rgba(55,65,120,.5)", whiteSpace: "nowrap" }}>Buka peta</a>
+                <a className="shine" href={petaTautan} target="_blank" rel="noopener noreferrer" style={{ position: "relative", overflow: "hidden", display: "inline-flex", alignItems: "center", padding: "11px 15px", borderRadius: "14px", fontSize: "12.5px", fontWeight: "700", color: "#33375a", background: "rgba(255,255,255,.9)", border: "1px solid rgba(255,255,255,1)", boxShadow: "0 14px 30px -14px rgba(55,65,120,.5)", whiteSpace: "nowrap" }}>{copy.mapButtonLabel}</a>
               )}
               <button className="shine" onClick={salinAlamat} style={{ position: "relative", overflow: "hidden", flex: "none", padding: "11px 15px", borderRadius: "14px", border: "0", cursor: "pointer", fontFamily: "inherit", fontSize: "12.5px", fontWeight: "700", color: "#fff", background: "linear-gradient(135deg,var(--sekolah-aksen),var(--sekolah-aksen-tengah) 55%,var(--sekolah-aksen-ujung))", boxShadow: "0 14px 30px -14px rgba(95,105,235,.9)", whiteSpace: "nowrap" }}>{labelAlamat}</button>
             </div>
@@ -155,8 +155,8 @@ const KontakBody = (vals = {}) => {
 
         <div style={{ position: "relative", overflow: "hidden", padding: "26px 28px", borderRadius: "26px", background: "rgba(255,255,255,.56)", backdropFilter: "blur(26px) saturate(185%)", WebkitBackdropFilter: "blur(26px) saturate(185%)", border: "1px solid rgba(255,255,255,.85)", boxShadow: "0 26px 56px -24px rgba(55,65,120,.5),inset 0 1px 0 rgba(255,255,255,.95)" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "14px" }}>
-            <h3 style={{ margin: "0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "20px", letterSpacing: "-.024em", fontWeight: "800", color: "#1b1c2c" }}>Jam layanan</h3>
-            <span style={{ fontSize: "11.5px", fontWeight: "700", letterSpacing: ".08em", textTransform: "uppercase", color: "#8a8ea8" }}>Waktu setempat</span>
+            <h3 style={{ margin: "0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "20px", letterSpacing: "-.024em", fontWeight: "800", color: "#1b1c2c" }}>{copy.serviceHoursTitle}</h3>
+            <span style={{ fontSize: "11.5px", fontWeight: "700", letterSpacing: ".08em", textTransform: "uppercase", color: "#8a8ea8" }}>{copy.serviceHoursSubtitle}</span>
           </div>
           <div style={{ marginTop: "16px", display: "flex", flexDirection: "column" }}>
             {(jam || []).map((j, $index) => (<React.Fragment key={$index}>
@@ -172,10 +172,10 @@ const KontakBody = (vals = {}) => {
 <section style={{ maxWidth: "1240px", margin: "0 auto", padding: "66px 28px 0" }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "24px", flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--sekolah-aksen-pekat)" }}>Narahubung</div>
-          <h2 style={{ margin: "10px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "38px", lineHeight: "1.1", letterSpacing: "-.032em", fontWeight: "800", color: "#171827" }}>Hubungi <span style={{ background: "linear-gradient(115deg,var(--sekolah-aksen-pekat),var(--sekolah-aksen-tengah-2) 48%,var(--sekolah-aksen-ujung))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent" }}>orang yang tepat</span></h2>
+          <div style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--sekolah-aksen-pekat)" }}>{copy.directoryEyebrow}</div>
+          <h2 style={{ margin: "10px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "38px", lineHeight: "1.1", letterSpacing: "-.032em", fontWeight: "800", color: "#171827" }}>{copy.directoryTitle} <span style={{ background: "linear-gradient(115deg,var(--sekolah-aksen-pekat),var(--sekolah-aksen-tengah-2) 48%,var(--sekolah-aksen-ujung))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent" }}>{copy.directoryAccent}</span></h2>
         </div>
-        <p style={{ maxWidth: "340px", margin: "0", fontSize: "14px", lineHeight: "1.6", color: "#5b6082" }}>Setiap urusan punya penanggung jawab. Menghubungi langsung akan lebih cepat daripada lewat nomor umum.</p>
+        <p style={{ maxWidth: "340px", margin: "0", fontSize: "14px", lineHeight: "1.6", color: "#5b6082" }}>{copy.directoryDescription}</p>
       </div>
 
       <div className="people" style={{ marginTop: "30px", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "20px" }}>
@@ -200,13 +200,13 @@ const KontakBody = (vals = {}) => {
       <div style={{ position: "relative", overflow: "hidden", padding: "44px 44px 42px", borderRadius: "32px", background: "linear-gradient(135deg,rgba(95,108,242,.95),rgba(152,110,235,.9) 48%,rgba(238,142,190,.9))", border: "1px solid rgba(255,255,255,.5)", boxShadow: "0 40px 88px -30px rgba(80,90,190,.78),inset 0 1px 0 rgba(255,255,255,.6)" }}>
         <div style={{ position: "relative", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "30px", flexWrap: "wrap" }}>
           <div style={{ maxWidth: "620px" }}>
-            <div style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(255,255,255,.82)" }}>Kunjungan sekolah</div>
-            <h2 style={{ margin: "16px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "38px", lineHeight: "1.1", letterSpacing: "-.034em", fontWeight: "800", color: "#fff", textWrap: "pretty" }}>Datang saja hari Rabu pukul sembilan.</h2>
-            <p style={{ margin: "16px 0 0", fontSize: "15.5px", lineHeight: "1.66", color: "rgba(255,255,255,.9)" }}>Kabari tata usaha sehari sebelumnya, dan seorang guru akan menemani Anda berkeliling kelas, perpustakaan, serta kebun sekolah.</p>
+            <div style={{ fontSize: "12px", fontWeight: "700", letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(255,255,255,.82)" }}>{copy.visitEyebrow}</div>
+            <h2 style={{ margin: "16px 0 0", fontFamily: "'Plus Jakarta Sans','Archivo',system-ui,sans-serif", fontSize: "38px", lineHeight: "1.1", letterSpacing: "-.034em", fontWeight: "800", color: "#fff", textWrap: "pretty" }}>{copy.visitTitle}</h2>
+            <p style={{ margin: "16px 0 0", fontSize: "15.5px", lineHeight: "1.66", color: "rgba(255,255,255,.9)" }}>{copy.visitDescription}</p>
           </div>
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            <a className="shine" href="#pesan" style={{ position: "relative", overflow: "hidden", display: "inline-flex", alignItems: "center", gap: "9px", padding: "15px 24px", borderRadius: "16px", fontSize: "14.5px", fontWeight: "700", color: "#3b3f7a", background: "rgba(255,255,255,.94)", boxShadow: "0 18px 38px -16px rgba(30,36,90,.7)" }}>Jadwalkan kunjungan</a>
-            <a className="shine" href="/profil/galeri" style={{ position: "relative", overflow: "hidden", display: "inline-flex", alignItems: "center", gap: "9px", padding: "15px 24px", borderRadius: "16px", fontSize: "14.5px", fontWeight: "700", color: "#fff", background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)" }}>Lihat galeri dulu</a>
+            <a className="shine" href="#pesan" style={{ position: "relative", overflow: "hidden", display: "inline-flex", alignItems: "center", gap: "9px", padding: "15px 24px", borderRadius: "16px", fontSize: "14.5px", fontWeight: "700", color: "#3b3f7a", background: "rgba(255,255,255,.94)", boxShadow: "0 18px 38px -16px rgba(30,36,90,.7)" }}>{copy.visitButtonLabel}</a>
+            <a className="shine" href="/profil/galeri" style={{ position: "relative", overflow: "hidden", display: "inline-flex", alignItems: "center", gap: "9px", padding: "15px 24px", borderRadius: "16px", fontSize: "14.5px", fontWeight: "700", color: "#fff", background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)" }}>{copy.galleryButtonLabel}</a>
           </div>
         </div>
       </div>

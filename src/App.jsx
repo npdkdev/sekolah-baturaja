@@ -14,7 +14,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { hydrateSchoolIdentity, subscribeSchoolIdentity, getSchoolIdentity } from '@/lib/schoolIdentity';
 import ScrollToTopButton from '@/components/ScrollToTopButton';
-import NewsPage from '@/pages/NewsPage';
+import NewsPage from '@/pages/NewsPageCms';
 import FacilitiesPage from '@/pages/FacilitiesPage';
 import ProgramPage from '@/pages/ProgramPage';
 import PpdbPage from '@/pages/PpdbPage';

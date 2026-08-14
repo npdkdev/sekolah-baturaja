@@ -2,13 +2,17 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lpq-backend/internal/middleware"
@@ -47,6 +51,7 @@ func (h *ContentHandler) Routes() http.Handler {
 	// Feedback — POST is the public contact form; list/delete are back-office.
 	r.Post("/feedback", h.SubmitFeedback)
 	r.Get("/feedback", h.ListFeedback)
+	r.Put("/feedback/{id}", h.UpdateFeedback)
 	r.Delete("/feedback/{id}", h.DeleteFeedback)
 
 	// Public teacher roster for the "Tim Pengajar" section on /profil.
@@ -263,247 +268,518 @@ type newsRow struct {
 	ID            string          `json:"id"`
 	Title         string          `json:"title"`
 	Slug          string          `json:"slug"`
+	Category      string          `json:"category"`
 	Excerpt       *string         `json:"excerpt"`
+	Summary       *string         `json:"summary"`
 	Content       json.RawMessage `json:"content"`
+	Body          string          `json:"body"`
 	CoverImageURL *string         `json:"cover_image_url"`
+	Media         json.RawMessage `json:"media"`
+	Gallery       json.RawMessage `json:"gallery"`
+	Author        string          `json:"author"`
+	AuthorRole    string          `json:"author_role"`
 	Status        string          `json:"status"`
 	PublishedAt   *string         `json:"published_at"`
+	IsFeatured    bool            `json:"is_featured"`
+	DisplayOrder  int             `json:"display_order"`
+	IsPublic      bool            `json:"is_public"`
 	CreatedAt     string          `json:"created_at"`
+	UpdatedAt     string          `json:"updated_at"`
 }
 
-// ListNews GET /api/content/news (public — published only)
-// Query: page, limit
+type newsPayload struct {
+	Title         *string         `json:"title"`
+	Slug          *string         `json:"slug"`
+	Category      *string         `json:"category"`
+	Excerpt       *string         `json:"excerpt"`
+	Summary       *string         `json:"summary"`
+	Content       json.RawMessage `json:"content"`
+	Body          *string         `json:"body"`
+	CoverImageURL *string         `json:"cover_image_url"`
+	Media         json.RawMessage `json:"media"`
+	Gallery       json.RawMessage `json:"gallery"`
+	Author        *string         `json:"author"`
+	AuthorRole    *string         `json:"author_role"`
+	Status        *string         `json:"status"`
+	PublishedAt   *string         `json:"published_at"`
+	IsFeatured    *bool           `json:"is_featured"`
+	DisplayOrder  *int            `json:"display_order"`
+	IsPublic      *bool           `json:"is_public"`
+}
+
+const newsColumns = `id,title,slug,category,excerpt,content,cover_image_url,media,
+ author,author_role,status,published_at::text,is_featured,display_order,is_public,
+ created_at::text,updated_at::text`
+
+var newsSlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+type newsScanner interface{ Scan(...any) error }
+
+func scanNews(s newsScanner) (newsRow, error) {
+	var n newsRow
+	err := s.Scan(&n.ID, &n.Title, &n.Slug, &n.Category, &n.Excerpt, &n.Content,
+		&n.CoverImageURL, &n.Media, &n.Author, &n.AuthorRole, &n.Status, &n.PublishedAt,
+		&n.IsFeatured, &n.DisplayOrder, &n.IsPublic, &n.CreatedAt, &n.UpdatedAt)
+	if err != nil {
+		return n, err
+	}
+	n.Summary = n.Excerpt
+	n.Gallery = n.Media
+	var object map[string]json.RawMessage
+	if json.Unmarshal(n.Content, &object) == nil {
+		for _, key := range []string{"body", "text"} {
+			var text string
+			if raw, ok := object[key]; ok && json.Unmarshal(raw, &text) == nil {
+				n.Body = text
+				break
+			}
+		}
+	}
+	return n, nil
+}
+
+func newsText(name, value string, max int) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("%s wajib diisi", name)
+	}
+	if len([]rune(value)) > max {
+		return "", fmt.Errorf("%s maksimal %d karakter", name, max)
+	}
+	return value, nil
+}
+
+func newsSlug(value string) (string, error) {
+	value, err := newsText("slug", value, 120)
+	if err == nil && !newsSlugPattern.MatchString(value) {
+		err = fmt.Errorf("slug hanya boleh berisi huruf kecil, angka, dan tanda hubung")
+	}
+	return value, err
+}
+
+func newsStatus(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value != "draft" && value != "published" && value != "archived" {
+		return "", fmt.Errorf("status harus draft, published, atau archived")
+	}
+	return value, nil
+}
+
+func newsTime(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if _, err := time.Parse(time.RFC3339, value); err != nil {
+		return "", fmt.Errorf("published_at harus memakai format RFC3339")
+	}
+	return value, nil
+}
+
+func newsJSON(name string, raw json.RawMessage, objectOnly bool) (json.RawMessage, error) {
+	if string(raw) == "null" {
+		if objectOnly {
+			return json.RawMessage(`{}`), nil
+		}
+		return json.RawMessage(`[]`), nil
+	}
+	if !json.Valid(raw) {
+		return nil, fmt.Errorf("%s harus berupa JSON valid", name)
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, fmt.Errorf("%s harus berupa JSON valid", name)
+	}
+	_, object := value.(map[string]any)
+	_, array := value.([]any)
+	if !object || (objectOnly && array) {
+		if objectOnly {
+			return nil, fmt.Errorf("%s harus berupa object JSON", name)
+		}
+		if !array {
+			return nil, fmt.Errorf("%s harus berupa object atau array JSON", name)
+		}
+	}
+	return raw, nil
+}
+
+func contentFromBody(value string) json.RawMessage {
+	raw, _ := json.Marshal(map[string]string{"body": value})
+	return raw
+}
+
+func newsDBError(w http.ResponseWriter, action string, err error) {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		if pgErr.Code == "23505" {
+			jsonError(w, "slug berita sudah digunakan", http.StatusConflict)
+			return
+		}
+		if pgErr.Code == "23502" || pgErr.Code == "23514" || pgErr.Code == "22P02" {
+			jsonError(w, "data berita tidak valid", http.StatusBadRequest)
+			return
+		}
+	}
+	jsonError(w, "gagal "+action+" berita", http.StatusInternalServerError)
+}
+
+// ListNews returns all lifecycle states to content managers and only public,
+// published rows to unauthenticated readers.
 func (h *ContentHandler) ListNews(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	page := 1
-	limit := 10
-	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
+	manager := middleware.CanManage(middleware.RoleFromCtx(r.Context()))
+	page, limit := 1, 10
+	if manager {
+		limit = 100
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && v > 0 {
 		page = v
 	}
-	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 && v <= 100 {
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 100 {
 		limit = v
 	}
-	offset := (page - 1) * limit
-
+	where := "WHERE status='published' AND is_public"
+	if manager {
+		where = ""
+	}
 	var total int
-	if err := h.db.QueryRow(r.Context(),
-		`SELECT COUNT(*) FROM news WHERE status = 'published'`,
-	).Scan(&total); err != nil {
+	if err := h.db.QueryRow(r.Context(), "SELECT count(*) FROM news "+where).Scan(&total); err != nil {
 		jsonError(w, "gagal menghitung berita", http.StatusInternalServerError)
 		return
 	}
-
-	rows, err := h.db.Query(r.Context(), `
-		SELECT id, title, slug, excerpt, content, cover_image_url, status,
-		       published_at::text, created_at::text
-		FROM news
-		WHERE status = 'published'
-		ORDER BY published_at DESC NULLS LAST, created_at DESC
-		LIMIT $1 OFFSET $2
-	`, limit, offset)
+	rows, err := h.db.Query(r.Context(), "SELECT "+newsColumns+" FROM news "+where+
+		" ORDER BY is_featured DESC,display_order ASC,published_at DESC NULLS LAST,created_at DESC LIMIT $1 OFFSET $2",
+		limit, (page-1)*limit)
 	if err != nil {
 		jsonError(w, "gagal mengambil berita", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
-
 	result := []newsRow{}
 	for rows.Next() {
-		var n newsRow
-		if err := rows.Scan(&n.ID, &n.Title, &n.Slug, &n.Excerpt, &n.Content, &n.CoverImageURL, &n.Status, &n.PublishedAt, &n.CreatedAt); err != nil {
+		n, err := scanNews(rows)
+		if err != nil {
 			jsonError(w, "gagal membaca berita", http.StatusInternalServerError)
 			return
 		}
 		result = append(result, n)
 	}
-
-	jsonOK(w, map[string]any{
-		"data":  result,
-		"total": total,
-		"page":  page,
-		"limit": limit,
-	})
+	if rows.Err() != nil {
+		jsonError(w, "gagal membaca berita", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]any{"data": result, "total": total, "page": page, "limit": limit})
 }
 
-// GetNews GET /api/content/news/:slug (public)
+// GetNews accepts a slug publicly and a slug or id for content managers.
 func (h *ContentHandler) GetNews(w http.ResponseWriter, r *http.Request) {
-	slug := chi.URLParam(r, "slug")
-	if slug == "" {
+	key := chi.URLParam(r, "slug")
+	if key == "" {
 		jsonError(w, "slug wajib diisi", http.StatusBadRequest)
 		return
 	}
-
-	var n newsRow
-	err := h.db.QueryRow(r.Context(), `
-		SELECT id, title, slug, excerpt, content, cover_image_url, status, published_at, created_at
-		FROM news
-		WHERE slug = $1 AND status = 'published'
-	`, slug).Scan(&n.ID, &n.Title, &n.Slug, &n.Excerpt, &n.Content, &n.CoverImageURL, &n.Status, &n.PublishedAt, &n.CreatedAt)
+	where := "WHERE slug=$1 AND status='published' AND is_public"
+	if middleware.CanManage(middleware.RoleFromCtx(r.Context())) {
+		where = "WHERE slug=$1 OR id::text=$1"
+	}
+	n, err := scanNews(h.db.QueryRow(r.Context(), "SELECT "+newsColumns+" FROM news "+where, key))
 	if err != nil {
 		jsonError(w, "berita tidak ditemukan", http.StatusNotFound)
 		return
 	}
-
 	jsonOK(w, map[string]any{"data": n})
 }
 
-// CreateNews POST /api/content/news (admin only)
 func (h *ContentHandler) CreateNews(w http.ResponseWriter, r *http.Request) {
-	role := middleware.RoleFromCtx(r.Context())
-	if !middleware.CanManage(role) {
+	if !middleware.CanManage(middleware.RoleFromCtx(r.Context())) {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
-
-	var body struct {
-		Title         string          `json:"title"`
-		Slug          string          `json:"slug"`
-		Excerpt       *string         `json:"excerpt"`
-		Content       json.RawMessage `json:"content"`
-		CoverImageURL *string         `json:"cover_image_url"`
-		Status        string          `json:"status"`
-		PublishedAt   *string         `json:"published_at"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	var p newsPayload
+	if json.NewDecoder(r.Body).Decode(&p) != nil {
 		jsonError(w, "request tidak valid", http.StatusBadRequest)
 		return
 	}
-	if body.Title == "" || body.Slug == "" {
+	if p.Title == nil || p.Slug == nil {
 		jsonError(w, "title dan slug wajib diisi", http.StatusBadRequest)
 		return
 	}
-	if body.Status != "published" && body.Status != "draft" {
-		body.Status = "draft"
-	}
-
-	var id string
-	err := h.db.QueryRow(r.Context(), `
-		INSERT INTO news (title, slug, excerpt, content, cover_image_url, status, published_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING id
-	`, body.Title, body.Slug, body.Excerpt, body.Content, body.CoverImageURL, body.Status, body.PublishedAt).Scan(&id)
+	title, err := newsText("title", *p.Title, 200)
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal menyimpan berita: %v", err), http.StatusInternalServerError)
+		jsonError(w, err.Error(), 400)
 		return
 	}
-
+	slug, err := newsSlug(*p.Slug)
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	category := "Pengumuman"
+	if p.Category != nil {
+		category, err = newsText("category", *p.Category, 80)
+		if err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	status := "draft"
+	if p.Status != nil {
+		status, err = newsStatus(*p.Status)
+		if err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	author := "Sekolah"
+	if p.Author != nil {
+		author, err = newsText("author", *p.Author, 160)
+		if err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	authorRole := "Sekolah"
+	if p.AuthorRole != nil {
+		authorRole, err = newsText("author_role", *p.AuthorRole, 80)
+		if err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	content := json.RawMessage(`{}`)
+	if len(p.Content) > 0 {
+		content, err = newsJSON("content", p.Content, true)
+	} else if p.Body != nil {
+		content = contentFromBody(*p.Body)
+	}
+	if err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	mediaInput := p.Media
+	if len(mediaInput) == 0 {
+		mediaInput = p.Gallery
+	}
+	media := json.RawMessage(`[]`)
+	if len(mediaInput) > 0 {
+		media, err = newsJSON("media", mediaInput, false)
+		if err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	var excerpt any
+	if p.Excerpt != nil {
+		excerpt = strings.TrimSpace(*p.Excerpt)
+	} else if p.Summary != nil {
+		excerpt = strings.TrimSpace(*p.Summary)
+	}
+	var cover any
+	if p.CoverImageURL != nil {
+		cover = strings.TrimSpace(*p.CoverImageURL)
+	}
+	var published any
+	if p.PublishedAt != nil {
+		published, err = newsTime(*p.PublishedAt)
+		if err != nil {
+			jsonError(w, err.Error(), 400)
+			return
+		}
+	}
+	if status == "published" && published == nil {
+		published = time.Now().UTC().Format(time.RFC3339)
+	}
+	featured := false
+	if p.IsFeatured != nil {
+		featured = *p.IsFeatured
+	}
+	order := 0
+	if p.DisplayOrder != nil {
+		order = *p.DisplayOrder
+	}
+	if order < 0 {
+		jsonError(w, "display_order harus bilangan bulat non-negatif", 400)
+		return
+	}
+	public := true
+	if p.IsPublic != nil {
+		public = *p.IsPublic
+	}
+	n, err := scanNews(h.db.QueryRow(r.Context(), `INSERT INTO news
+		(title,slug,category,excerpt,content,cover_image_url,media,author,author_role,status,published_at,is_featured,display_order,is_public)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING `+newsColumns,
+		title, slug, category, excerpt, content, cover, media, author, authorRole, status, published, featured, order, public))
+	if err != nil {
+		newsDBError(w, "menyimpan", err)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"id": id}})
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": n})
 }
 
-// UpdateNews PUT /api/content/news/:id (admin only)
 func (h *ContentHandler) UpdateNews(w http.ResponseWriter, r *http.Request) {
-	role := middleware.RoleFromCtx(r.Context())
-	if !middleware.CanManage(role) {
-		jsonError(w, "forbidden", http.StatusForbidden)
+	if !middleware.CanManage(middleware.RoleFromCtx(r.Context())) {
+		jsonError(w, "forbidden", 403)
 		return
 	}
-
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		jsonError(w, "id wajib diisi", http.StatusBadRequest)
+		jsonError(w, "id wajib diisi", 400)
 		return
 	}
-
-	var body struct {
-		Title         *string         `json:"title"`
-		Slug          *string         `json:"slug"`
-		Excerpt       *string         `json:"excerpt"`
-		Content       json.RawMessage `json:"content"`
-		CoverImageURL *string         `json:"cover_image_url"`
-		Status        *string         `json:"status"`
-		PublishedAt   *string         `json:"published_at"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, "request tidak valid", http.StatusBadRequest)
+	var p newsPayload
+	if json.NewDecoder(r.Body).Decode(&p) != nil {
+		jsonError(w, "request tidak valid", 400)
 		return
 	}
-
-	setClauses := []string{}
+	sets := []string{}
 	args := []any{}
 	idx := 1
-
-	if body.Title != nil {
-		setClauses = append(setClauses, fmt.Sprintf("title = $%d", idx))
-		args = append(args, *body.Title)
+	add := func(column string, value any) {
+		sets = append(sets, fmt.Sprintf("%s=$%d", column, idx))
+		args = append(args, value)
 		idx++
 	}
-	if body.Slug != nil {
-		setClauses = append(setClauses, fmt.Sprintf("slug = $%d", idx))
-		args = append(args, *body.Slug)
+	if p.Title != nil {
+		v, e := newsText("title", *p.Title, 200)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("title", v)
+	}
+	if p.Slug != nil {
+		v, e := newsSlug(*p.Slug)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("slug", v)
+	}
+	if p.Category != nil {
+		v, e := newsText("category", *p.Category, 80)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("category", v)
+	}
+	if p.Excerpt != nil {
+		add("excerpt", strings.TrimSpace(*p.Excerpt))
+	} else if p.Summary != nil {
+		add("excerpt", strings.TrimSpace(*p.Summary))
+	}
+	if len(p.Content) > 0 {
+		v, e := newsJSON("content", p.Content, true)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("content", v)
+	} else if p.Body != nil {
+		sets = append(sets, fmt.Sprintf("content=jsonb_set(content,'{body}',to_jsonb($%d::text),true)", idx))
+		args = append(args, *p.Body)
 		idx++
 	}
-	if body.Excerpt != nil {
-		setClauses = append(setClauses, fmt.Sprintf("excerpt = $%d", idx))
-		args = append(args, *body.Excerpt)
-		idx++
+	if p.CoverImageURL != nil {
+		add("cover_image_url", strings.TrimSpace(*p.CoverImageURL))
 	}
-	if body.Content != nil {
-		setClauses = append(setClauses, fmt.Sprintf("content = $%d", idx))
-		args = append(args, body.Content)
-		idx++
+	media := p.Media
+	if len(media) == 0 {
+		media = p.Gallery
 	}
-	if body.CoverImageURL != nil {
-		setClauses = append(setClauses, fmt.Sprintf("cover_image_url = $%d", idx))
-		args = append(args, *body.CoverImageURL)
-		idx++
+	if len(media) > 0 {
+		v, e := newsJSON("media", media, false)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("media", v)
 	}
-	if body.Status != nil {
-		setClauses = append(setClauses, fmt.Sprintf("status = $%d", idx))
-		args = append(args, *body.Status)
-		idx++
+	if p.Author != nil {
+		v, e := newsText("author", *p.Author, 160)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("author", v)
 	}
-	if body.PublishedAt != nil {
-		setClauses = append(setClauses, fmt.Sprintf("published_at = $%d", idx))
-		args = append(args, *body.PublishedAt)
-		idx++
+	if p.AuthorRole != nil {
+		v, e := newsText("author_role", *p.AuthorRole, 80)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("author_role", v)
 	}
-
-	if len(setClauses) == 0 {
-		jsonError(w, "tidak ada field yang diupdate", http.StatusBadRequest)
+	status := ""
+	if p.Status != nil {
+		var e error
+		status, e = newsStatus(*p.Status)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("status", status)
+	}
+	if p.PublishedAt != nil {
+		v, e := newsTime(*p.PublishedAt)
+		if e != nil {
+			jsonError(w, e.Error(), 400)
+			return
+		}
+		add("published_at", v)
+	} else if status == "published" {
+		sets = append(sets, "published_at=COALESCE(published_at,now())")
+	}
+	if p.IsFeatured != nil {
+		add("is_featured", *p.IsFeatured)
+	}
+	if p.DisplayOrder != nil {
+		if *p.DisplayOrder < 0 {
+			jsonError(w, "display_order harus bilangan bulat non-negatif", 400)
+			return
+		}
+		add("display_order", *p.DisplayOrder)
+	}
+	if p.IsPublic != nil {
+		add("is_public", *p.IsPublic)
+	}
+	if len(sets) == 0 {
+		jsonError(w, "tidak ada field yang diupdate", 400)
 		return
 	}
-
+	sets = append(sets, "updated_at=now()")
 	args = append(args, id)
-	query := fmt.Sprintf("UPDATE news SET %s WHERE id = $%d", strings.Join(setClauses, ", "), idx)
-	tag, err := h.db.Exec(r.Context(), query, args...)
+	query := fmt.Sprintf("UPDATE news SET %s WHERE id=$%d RETURNING %s", strings.Join(sets, ","), idx, newsColumns)
+	n, err := scanNews(h.db.QueryRow(r.Context(), query, args...))
 	if err != nil {
-		jsonError(w, fmt.Sprintf("gagal mengupdate berita: %v", err), http.StatusInternalServerError)
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "berita tidak ditemukan", 404)
+		} else {
+			newsDBError(w, "mengupdate", err)
+		}
 		return
 	}
-	if tag.RowsAffected() == 0 {
-		jsonError(w, "berita tidak ditemukan", http.StatusNotFound)
-		return
-	}
-
-	jsonOK(w, map[string]any{"data": map[string]string{"id": id}})
+	jsonOK(w, map[string]any{"data": n})
 }
 
-// DeleteNews DELETE /api/content/news/:id (admin only)
 func (h *ContentHandler) DeleteNews(w http.ResponseWriter, r *http.Request) {
-	role := middleware.RoleFromCtx(r.Context())
-	if !middleware.CanManage(role) {
-		jsonError(w, "forbidden", http.StatusForbidden)
+	if !middleware.CanManage(middleware.RoleFromCtx(r.Context())) {
+		jsonError(w, "forbidden", 403)
 		return
 	}
-
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		jsonError(w, "id wajib diisi", http.StatusBadRequest)
+		jsonError(w, "id wajib diisi", 400)
 		return
 	}
-
-	tag, err := h.db.Exec(r.Context(), `DELETE FROM news WHERE id = $1`, id)
+	tag, err := h.db.Exec(r.Context(), `DELETE FROM news WHERE id=$1`, id)
 	if err != nil {
-		jsonError(w, "gagal menghapus berita", http.StatusInternalServerError)
+		newsDBError(w, "menghapus", err)
 		return
 	}
 	if tag.RowsAffected() == 0 {
-		jsonError(w, "berita tidak ditemukan", http.StatusNotFound)
+		jsonError(w, "berita tidak ditemukan", 404)
 		return
 	}
-
 	jsonOK(w, map[string]any{"data": map[string]string{"id": id}})
 }
 
@@ -827,8 +1103,61 @@ func (h *ContentHandler) ListFeedback(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]any{"data": result})
 }
 
-// DeleteFeedback DELETE /api/content/feedback/:id (admin only)
+// UpdateFeedback PUT /api/content/feedback/:id (admin only)
+func (h *ContentHandler) UpdateFeedback(w http.ResponseWriter, r *http.Request) {
+	role := middleware.RoleFromCtx(r.Context())
+	if !middleware.CanManage(role) {
+		jsonError(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		jsonError(w, "id wajib diisi", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "request tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	status := strings.TrimSpace(body.Status)
+	switch status {
+	case "new", "reviewed", "closed", "spam":
+	default:
+		jsonError(w, "status pesan tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	var actor any
+	if userID := middleware.UserIDFromCtx(r.Context()); userID != "" {
+		actor = userID
+	}
+	tag, err := h.db.Exec(r.Context(), `
+		UPDATE feedbacks
+		SET status = $1,
+		    handled_by = CASE WHEN $1 = 'new' THEN NULL ELSE $2 END,
+		    handled_at = CASE WHEN $1 = 'new' THEN NULL ELSE now() END
+		WHERE id = $3
+	`, status, actor, id)
+	if err != nil {
+		jsonError(w, "gagal memperbarui status pesan", http.StatusInternalServerError)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		jsonError(w, "pesan tidak ditemukan", http.StatusNotFound)
+		return
+	}
+
+	jsonOK(w, map[string]any{"data": map[string]string{"id": id, "status": status}})
+}
 func (h *ContentHandler) DeleteFeedback(w http.ResponseWriter, r *http.Request) {
+
+// DeleteFeedback DELETE /api/content/feedback/:id (admin only)
 	role := middleware.RoleFromCtx(r.Context())
 	if !middleware.CanManage(role) {
 		jsonError(w, "forbidden", http.StatusForbidden)

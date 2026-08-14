@@ -7,73 +7,12 @@ import useSdnbMotion from '@/hooks/useSdnbMotion';
 import '@/styles/sdnb.css';
 
 /**
- * Berita — markup generated verbatim from `Berita.dc.html` by
- * tools/dc-convert.mjs. This file reproduces the mockup's logic class: the
- * headline ticker, category filter + search, the featured lead/secondary
- * layout, the list, the agenda and archive rails, and the built-in article
- * reader with keyboard navigation.
- *
- * Backend fill-in: published news from the CMS is prepended to the list using
- * the same card shape, so the admin dashboard drives this page while the
- * mockup's own articles remain as the default content.
+ * Legacy-compatible renderer kept for imports outside the active route.
+ * The /berita route uses NewsPageCms, which reads published CMS content only.
  */
 
-const N_MOCKUP = [
-  ['Sekolah meraih Adiwiyata tingkat nasional', 'Prestasi', '12 Mei 2026', 6,
-    'Penilaian tim kementerian berlangsung dua hari, meninjau kebun sekolah, bank sampah, dan catatan pemakaian air setiap kelas.',
-    ['Tim penilai datang pada Selasa pagi dan langsung menuju petak kebun di sisi timur halaman. Murid kelas lima yang sedang bertugas menyiram menjelaskan sendiri jadwal perawatan mereka, termasuk cara memisahkan kompos dari sampah plastik.',
-      'Penilaian hari kedua difokuskan pada dokumen: catatan pemakaian air per kelas, daftar tanaman, dan laporan bank sampah yang dikelola pengurus kelas enam. Semua catatan ditulis tangan dan direkap setiap akhir bulan oleh guru pendamping.',
-      'Penghargaan diserahkan di Palembang pada akhir Mei. Kepala sekolah menyampaikan bahwa program ini akan diperluas ke kelas satu sampai tiga dengan bentuk yang lebih sederhana, yaitu memilah sampah di dalam kelas masing-masing.'],
-    'linear-gradient(150deg,#b6f0c8,#8fe0c0 55%,#9fc4f8)', 'Sekolah', 'Kepala Sekolah'],
-  ['Pendaftaran murid baru 2026/2027 dibuka 3 Juni', 'PPDB', '28 Mei 2026', 4,
-    'Kuota 96 murid untuk empat rombongan belajar kelas satu. Pendaftaran dilakukan daring maupun langsung di ruang tata usaha.',
-    ['Berkas yang perlu disiapkan adalah kartu keluarga, akta kelahiran, dan satu lembar foto terbaru. Calon murid berusia paling rendah enam tahun pada 1 Juli 2026.',
-      'Tata usaha membuka layanan setiap hari kerja pukul 07.30 sampai 15.00. Bagi orang tua yang mendaftar daring, formulir dapat diisi lewat halaman PPDB dan berkas diunggah pada langkah terakhir.',
-      'Pengumuman hasil seleksi zonasi dijadwalkan pada 20 Juni, disusul daftar ulang sampai 27 Juni.'],
-    'linear-gradient(150deg,#c6b6f6,#9fc4f8)', 'Sekolah', 'Tata Usaha'],
-  ['Dua murid kelas VI juara MTQ kabupaten', 'Prestasi', '14 Maret 2026', 3,
-    'Cabang tilawah putra dan putri, masing-masing meraih peringkat pertama pada seleksi tingkat Kabupaten Ogan Komering Ulu.',
-    ['Latihan berjalan tiga bulan setiap Selasa dan Kamis sore, dibimbing guru pendidikan agama bersama seorang qari dari masjid dekat sekolah.',
-      'Keduanya akan mewakili kabupaten pada seleksi tingkat provinsi bulan Agustus. Sekolah menyediakan waktu latihan tambahan tanpa mengurangi jam pelajaran.'],
-    'linear-gradient(150deg,#ffeab3,#ffd08c)', 'Sekolah', 'Wakil Kepala Sekolah'],
-  ['Waktu membaca pagi kini berjalan di seluruh kelas', 'Kegiatan', '9 Februari 2026', 5,
-    'Lima belas menit sebelum pelajaran pertama, setiap murid membaca buku pilihan sendiri tanpa tugas ringkasan.',
-    ['Program ini dimulai di dua kelas pada 2024 dan diperluas setelah guru mencatat kemajuan pada murid yang sebelumnya enggan membaca.',
-      'Perpustakaan menyediakan kotak buku bergilir untuk tiap kelas, diganti setiap dua pekan. Murid boleh membaca ulang buku yang sama sesering yang mereka mau.',
-      'Guru tidak meminta laporan bacaan. Satu-satunya catatan adalah daftar judul yang dipinjam, dipakai pustakawan untuk menambah koleksi yang paling sering dicari.'],
-    'linear-gradient(150deg,#bcd6ff,#9fb6f8)', 'Sekolah', 'Guru Kelas I'],
-  ['Pentas seni tahunan menampilkan 14 kelas', 'Kegiatan', '20 Desember 2025', 4,
-    'Tari daerah, drama, dan paduan suara ditampilkan di panggung halaman depan selama satu hari penuh.',
-    ['Persiapan berjalan sebulan pada jam ekstrakurikuler. Kostum dibuat bersama orang tua murid, sebagian memakai kain yang dipinjam dari sanggar kota.',
-      'Acara ditutup dengan paduan suara gabungan kelas lima dan enam. Hasil penjualan makanan di stan kelas dipakai untuk menambah koleksi buku perpustakaan.'],
-    'linear-gradient(150deg,#ffc9dc,#f2a9c8 60%,#c6b6f6)', 'Sekolah', 'Guru Kelas II'],
-  ['Kantin sekolah berhenti menjual minuman berpemanis', 'Pengumuman', '5 November 2025', 3,
-    'Keputusan diambil setelah rapat guru dan komite sekolah pada akhir Oktober.',
-    ['Kantin kini hanya menyediakan air putih, susu tawar, dan jus buah tanpa gula tambahan. Menu makanan diperiksa guru piket setiap pekan.',
-      'Murid tetap diperbolehkan membawa bekal dari rumah. Sekolah mengimbau orang tua mengurangi makanan kemasan berpewarna.'],
-    'linear-gradient(150deg,#ffd9b3,#f7b7a0)', 'Sekolah', 'Guru Penjas'],
-  ['Ruang komputer bertambah enam belas unit', 'Fasilitas', '18 Oktober 2025', 3,
-    'Bantuan dari pemerintah kabupaten melengkapi kelas literasi digital untuk kelas empat sampai enam.',
-    ['Seluruh unit dipasang pada pekan pertama Oktober bersama jaringan internet baru. Setiap kelas memperoleh satu jam pemakaian per pekan.',
-      'Guru kelas menyusun materi dasar: mengetik, menyimpan berkas, dan mencari informasi dengan pendampingan.'],
-    'linear-gradient(150deg,#d7d2ff,#b4b8f8)', 'Sekolah', 'Guru Kelas IV'],
-  ['Jadwal ujian akhir semester ganjil', 'Pengumuman', '2 Oktober 2025', 2,
-    'Ujian berlangsung 1 sampai 6 Desember 2025, dua mata pelajaran setiap hari, selesai pukul 11.00.',
-    ['Daftar lengkap mata pelajaran per hari dibagikan lewat wali kelas dan ditempel di papan pengumuman depan ruang guru.',
-      'Murid diminta datang pukul 07.00. Tidak ada pelajaran tambahan selama pekan ujian.'],
-    'linear-gradient(150deg,#c9e8ff,#a5c8f5)', 'Sekolah', 'Wakil Kepala Sekolah'],
-  ['Kebun sekolah panen pertama tahun ini', 'Kegiatan', '21 September 2025', 3,
-    'Kangkung dan bayam dari petak kelas empat dimasak bersama di kantin pada Jumat pagi.',
-    ['Petak dibagi per kelas sejak awal tahun ajaran, masing-masing dirawat empat murid yang bergilir setiap pekan.',
-      'Hasil panen berikutnya dijadwalkan November, dengan tambahan petak cabai di sisi selatan halaman.'],
-    'linear-gradient(150deg,#ffe0b3,#ffc39c 55%,#b6f0e0)', 'Sekolah', 'Guru Kelas VI'],
-  ['Perpustakaan buka setiap hari sampai pukul 14.00', 'Fasilitas', '3 September 2025', 2,
-    'Jam layanan diperpanjang satu jam agar murid dapat membaca setelah jam pelajaran terakhir.',
-    ['Pustakawan mencatat kenaikan peminjaman sejak jam layanan diperpanjang, terutama pada buku cerita bergambar.',
-      'Ruang baca menampung dua puluh empat murid sekaligus. Murid kelas satu sampai tiga perlu didampingi wali kelas.'],
-    'linear-gradient(150deg,#b6e8f0,#8fd8ec)', 'Sekolah', 'Pustakawan'],
-];
 
+const N_MOCKUP = [];
 const KAT = ['Semua', 'Pengumuman', 'Kegiatan', 'Prestasi', 'Fasilitas', 'PPDB'];
 const CMS_GRADS = ['linear-gradient(150deg,#c4b7f7,#93b8f7)', 'linear-gradient(150deg,#ffc6da,#f6a8c6)', 'linear-gradient(150deg,#b3eee0,#8ed4ea)'];
 

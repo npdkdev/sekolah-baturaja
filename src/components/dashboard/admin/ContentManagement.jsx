@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { Plus, Trash2, Edit, Video, Users, BookCopy, MessageSquare, FileText, Library, Building, Mail, Info, Image as ImageIcon, Home, Save } from 'lucide-react';
+import { Plus, Trash2, Edit, Video, Users, BookCopy, MessageSquare, FileText, Library, Building, Mail, Info, Image as ImageIcon, Home, Save, Phone } from 'lucide-react';
 import { fetchSantriList, fetchGuruList } from '@/lib/dataMasterAdapters';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,6 +17,7 @@ import PrestasiContentSettings from '@/components/dashboard/admin/PrestasiConten
 import EkskulContentSettings from '@/components/dashboard/admin/EkskulContentSettings';
 import ProgramContentSettings from '@/components/dashboard/admin/ProgramContentSettings';
 import SchoolInfoSettings from '@/components/dashboard/admin/SchoolInfoSettings';
+import ContactContentSettings from '@/components/dashboard/admin/ContactContentSettings';
 import GalleryHeroMosaicSettings from '@/components/dashboard/admin/GalleryHeroMosaicSettings';
 import { useAuth } from '@/contexts/AuthContext';
 import { getSchoolIdentity } from '@/lib/schoolIdentity';
@@ -29,9 +30,7 @@ import { DEFAULT_GALLERY_HERO_MOSAIC, GALLERY_HERO_MOSAIC_KEY, normalizeGalleryA
 import {
   archiveAnnouncement,
   archiveNews,
-  deleteFeedback,
   fetchAdminAnnouncements,
-  fetchAdminFeedbacks,
   fetchAdminNews,
   fetchWebsiteContentMap,
   getPublicContentErrorMessage,
@@ -43,6 +42,8 @@ import {
   saveWebsiteContentItems,
   slugify
 } from '@/lib/publicContentAdapters';
+import NewsManagementPanel from '@/components/dashboard/admin/NewsManagementPanel';
+import FeedbackInboxPanel from '@/components/dashboard/admin/FeedbackInboxPanel';
 
 // Enam tahap, dipakai sebagai Kelas 1-6 untuk sekolah dasar.
 const KELAS_LEVELS = [1, 2, 3, 4, 5, 6].map(String);
@@ -92,10 +93,11 @@ const CONTENT_TAB_GROUPS = [
   },
   {
     id: 'komunikasi',
-    label: 'Pesan',
-    description: 'Pesan yang dikirim pengunjung melalui halaman Kontak.',
+    label: 'Komunikasi',
+    description: 'Kelola tampilan halaman Kontak dan pesan yang dikirim pengunjung.',
     icon: Mail,
     tabs: [
+      { id: 'kontak', label: 'Halaman Kontak', icon: Phone },
       { id: 'pesan', label: 'Pesan Masuk', icon: Mail },
     ],
   },
@@ -254,7 +256,6 @@ const ContentManagement = () => {
     ...defaultContent, schoolBuildingPhoto: '', brochures: [], pustaka: [], news: [], announcements: [], qiroatiVideos: [], hafalanVideos: [], waliDiscussions: [], santriOfTheMonth: [], guruOfTheMonth: null, leaderboard: [], parentingArticles: [], galleryAlbums: [], [GALLERY_HERO_MOSAIC_KEY]: { ...DEFAULT_GALLERY_HERO_MOSAIC }, model3dSettings: { autoRotate: false, autoRotateSpeed: 0.34, rotationX: 0, rotationY: 0, rotationZ: 0 }
   });
 
-  const [feedbacks, setFeedbacks] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [modalType, setModalType] = useState('');
@@ -267,7 +268,7 @@ const ContentManagement = () => {
     publik: 'homepage',
     program: 'program',
     media: 'media',
-    komunikasi: 'pesan',
+    komunikasi: 'kontak',
     akademik: 'hafalan',
   });
   const [assetUploadType, setAssetUploadType] = useState(null);
@@ -275,26 +276,7 @@ const ContentManagement = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveState, setSaveState] = useState('idle');
 
-  useEffect(() => { fetchContent(); fetchSantriAndGuru(); fetchFeedbacks(); }, []);
-
-  const fetchFeedbacks = async () => {
-    try {
-      setFeedbacks(await fetchAdminFeedbacks());
-    } catch (error) {
-      toast({ title: "Gagal Memuat Pesan", description: getPublicContentErrorMessage(error), variant: "destructive" });
-    }
-  };
-
-  const handleDeleteFeedback = async (id) => {
-    if (!window.confirm('Yakin ingin menghapus pesan ini?')) return;
-    try {
-      await deleteFeedback(id);
-      toast({ title: "Pesan dihapus!" });
-      fetchFeedbacks();
-    } catch (error) {
-      toast({ title: "Gagal Menghapus Pesan", description: getPublicContentErrorMessage(error), variant: "destructive" });
-    }
-  }
+  useEffect(() => { fetchContent(); fetchSantriAndGuru(); }, []);
 
   const fetchSantriAndGuru = async () => {
     try {
@@ -671,7 +653,7 @@ const ContentManagement = () => {
             <div className="col-span-full"><ContentSection title="Album" modalType="galleryAlbums" data={content.galleryAlbums} icon={<BookMarked />} renderItem={item => <div className="min-w-0"><p className="truncate font-medium">{item.title || item.name}</p><p className="text-xs text-muted-foreground">{(item.photo_ids || item.photoIds || []).length} foto dari Galeri Kegiatan</p></div>} /></div>
             <div className="admin-card p-4 space-y-4"><h3 className="font-bold text-xl flex items-center gap-2"><FileText /> Brosur Pendaftaran</h3><Input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'brochures')} /><div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">{content.brochures.map(file => (<div key={file.id} className="flex justify-between items-center p-2 border rounded-lg bg-background"><span>{file.name}</span><Button variant="ghost" size="icon" onClick={() => handleDeleteItem('brochures', file.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button></div>))}</div></div>
             <div className="admin-card p-4 space-y-4"><h3 className="font-bold text-xl flex items-center gap-2"><Library /> Pustaka Digital</h3><Input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'pustaka')} /><div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">{content.pustaka.map(file => (<div key={file.id} className="flex justify-between items-center p-2 border rounded-lg bg-background"><span>{file.name}</span><Button variant="ghost" size="icon" onClick={() => handleDeleteItem('pustaka', file.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button></div>))}</div></div>
-            <ContentSection title="Berita" modalType="news" data={content.news} icon={<BookCopy />} renderItem={item => <p className="truncate">{item.title}</p>} />
+            <NewsManagementPanel items={content.news} onItemsChange={(news) => setContent((previous) => ({ ...previous, news }))} />
             <ContentSection title="Pengumuman" modalType="announcements" data={content.announcements} icon={<MessageSquare />} renderItem={item => <p className="truncate">{item.title}</p>} />
             <ContentSection title="Video Hafalan" modalType="hafalanVideos" data={content.hafalanVideos} icon={<Video />} renderItem={item => <p className="truncate">{item.title}</p>} />
             <ContentSection title="Fasilitas" modalType="facilities" data={content.facilities} icon={<Building />} renderItem={item => <p className="truncate">{item.name}</p>} />
@@ -679,15 +661,10 @@ const ContentManagement = () => {
         );
       case 'enrollment':
         return <PpdbContentSettings />;
+      case 'kontak':
+        return <ContactContentSettings />;
       case 'pesan':
-        return (
-          <>
-            <h3 className="font-bold text-xl flex items-center gap-2"><Mail />Pesan dari Pengunjung</h3>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-              {feedbacks.length > 0 ? feedbacks.map(fb => (<div key={fb.id} className="admin-card p-4 bg-background relative"><Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => handleDeleteFeedback(fb.id)}><Trash2 className="h-4 w-4" /></Button><p className="font-semibold text-lg">{fb.nama || 'Anonim'}</p><div className="text-sm text-muted-foreground mb-2"><span>{fb.email || '-'}</span> | <span>{fb.phone || '-'}</span> | <span>{new Date(fb.created_at).toLocaleString('id-ID')}</span></div><p className="whitespace-pre-wrap">{fb.message}</p></div>)) : (<p className="text-center text-muted-foreground py-4">Tidak ada pesan masuk.</p>)}
-            </div>
-          </>
-        );
+        return <FeedbackInboxPanel />;
       case 'hafalan':
         return (
           <Tabs defaultValue="per-kelas" className="space-y-5">

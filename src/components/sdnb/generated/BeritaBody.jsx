@@ -206,6 +206,16 @@ const BeritaBody = (vals = {}) => {
           {(artikel.isi || []).map((p, $index) => (<React.Fragment key={$index}>
             <p style={{ margin: "18px 0 0", fontSize: "15.5px", lineHeight: "1.78", color: "#4a4f74", textWrap: "pretty" }}>{p}</p>
           </React.Fragment>))}
+          {(artikel.media || []).length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: "12px", marginTop: "24px" }}>
+              {(artikel.media || []).map((media, $index) => (
+                <figure key={media.id || media.url || $index} style={{ margin: "0", overflow: "hidden", borderRadius: "16px", border: "1px solid rgba(120,132,200,.2)" }}>
+                  <img src={media.url} alt={media.alt || media.caption || "Media berita"} style={{ display: "block", width: "100%", aspectRatio: "4 / 3", objectFit: "cover" }} />
+                  {media.caption && <figcaption style={{ padding: "8px 10px", fontSize: "12px", color: "#6d7192" }}>{media.caption}</figcaption>}
+                </figure>
+              ))}
+            </div>
+          )}
           <div style={{ marginTop: "30px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", paddingTop: "22px", borderTop: "1px solid rgba(120,132,200,.22)" }}>
             <div style={{ fontSize: "12.5px", color: "#6d7192" }}>Artikel {artikel.pos}</div>
             <div style={{ display: "flex", gap: "10px" }}>

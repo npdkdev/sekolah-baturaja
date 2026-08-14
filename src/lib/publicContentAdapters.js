@@ -18,20 +18,64 @@ export const getPublicContentErrorMessage = (error) => {
   return error.message || String(error);
 };
 
-export const normalizeNewsRow = (row) => ({
-  id: row.id,
-  title: row.title || '',
-  slug: row.slug || row.id,
-  summary: row.excerpt || '',
-  excerpt: row.excerpt || '',
-  content: row.content?.body || row.content?.text || '',
-  image_url: row.cover_image_url || '',
-  cover_image_url: row.cover_image_url || '',
-  status: row.status || 'draft',
-  date: toDateText(row.published_at || row.created_at),
-  published_at: row.published_at,
-  created_at: row.created_at,
-});
+const normalizeMediaItems = (value) => (Array.isArray(value) ? value : [])
+  .map((item, index) => {
+    if (typeof item === 'string') {
+      return { id: 'media-' + index, url: item, type: 'image', caption: '', alt: '' };
+    }
+    if (!item || typeof item !== 'object') return null;
+    const url = String(item.url || item.publicUrl || item.src || '').trim();
+    if (!url) return null;
+    return {
+      id: String(item.id || 'media-' + index),
+      url,
+      type: String(item.type || 'image'),
+      caption: String(item.caption || item.title || '').trim(),
+      alt: String(item.alt || item.caption || item.title || '').trim(),
+    };
+  })
+  .filter(Boolean);
+
+export const normalizeNewsContent = (value) => {
+  if (typeof value === 'string') return { body: value, gallery: [], media: [] };
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    body: String(source.body || source.text || source.isi || '').trim(),
+    gallery: normalizeMediaItems(source.gallery || source.images),
+    media: normalizeMediaItems(source.media),
+  };
+};
+
+export const normalizeNewsRow = (row) => {
+  const content = normalizeNewsContent(row.content);
+  const storedMedia = normalizeNewsContent({ gallery: row.media, media: row.media });
+  const gallery = storedMedia.gallery.length ? storedMedia.gallery : content.gallery;
+  const media = storedMedia.media.length ? storedMedia.media : content.media;
+  const displayOrder = Number(row.display_order);
+  return {
+    id: row.id,
+    title: row.title || '',
+    slug: row.slug || row.id,
+    summary: row.excerpt || '',
+    excerpt: row.excerpt || '',
+    content: content.body,
+    body: content.body,
+    gallery,
+    media,
+    image_url: row.cover_image_url || '',
+    cover_image_url: row.cover_image_url || '',
+    category: row.category || 'Umum',
+    author: row.author || '',
+    author_role: row.author_role || '',
+    status: row.status || 'draft',
+    is_featured: row.is_featured === true,
+    display_order: Number.isFinite(displayOrder) ? displayOrder : 0,
+    is_public: row.is_public !== false,
+    date: toDateText(row.published_at || row.created_at),
+    published_at: row.published_at,
+    created_at: row.created_at,
+  };
+};
 
 export const normalizeAnnouncementRow = (row) => ({
   id: row.id,
@@ -205,23 +249,43 @@ export const fetchAdminAnnouncements = async () => {
   return (data || []).map(normalizeAnnouncementRow);
 };
 
-const publicationTimestamp = (status, existingPublishedAt) => {
+const publicationTimestamp = (status, explicitPublishedAt, existingPublishedAt = null) => {
+  if (explicitPublishedAt === '') return null;
+  if (explicitPublishedAt) {
+    const parsed = new Date(explicitPublishedAt);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
   if (status !== 'published') return existingPublishedAt || null;
   return existingPublishedAt || new Date().toISOString();
 };
 
 export const saveNews = async (item) => {
   const status = item.status || 'draft';
+  const normalizedContent = normalizeNewsContent(
+    item.content && typeof item.content === 'object'
+      ? item.content
+      : { body: item.content || item.body, gallery: item.gallery, media: item.media },
+  );
+  const displayOrder = Number.parseInt(item.display_order, 10);
   const payload = {
     title: String(item.title || '').trim(),
     slug: String(item.slug || slugify(item.title)).trim(),
     excerpt: String(item.summary || item.excerpt || '').trim() || null,
-    content: { body: String(item.content || '').trim() },
+    content: normalizedContent,
+    media: normalizedContent.gallery.length > 0 ? normalizedContent.gallery : normalizedContent.media,
     cover_image_url: String(item.image_url || item.cover_image_url || '').trim() || null,
+    category: String(item.category || 'Umum').trim() || 'Umum',
+    author: String(item.author || '').trim() || null,
+    author_role: String(item.author_role || '').trim() || null,
     status,
-    published_at: publicationTimestamp(status, item.published_at),
+    is_featured: item.is_featured === true,
+    display_order: Number.isFinite(displayOrder) && displayOrder >= 0 ? displayOrder : 0,
+    is_public: item.is_public !== false,
+    published_at: publicationTimestamp(status, item.published_at, item.published_at),
   };
   if (!payload.title) throw new Error('Judul berita wajib diisi.');
+  if (!payload.slug) throw new Error('Slug berita wajib diisi.');
+  if (!payload.content.body) throw new Error('Isi berita wajib diisi.');
   const data = item.id
     ? await apiClient.put(`/api/content/news/${item.id}`, payload)
     : await apiClient.post('/api/content/news', payload);
@@ -250,6 +314,10 @@ export const saveAnnouncement = async (item) => {
 
 export const archiveNews = async (id) => {
   await apiClient.put(`/api/content/news/${id}`, { status: 'archived' });
+};
+
+export const deleteNews = async (id) => {
+  await apiClient.delete(`/api/content/news/${id}`);
 };
 
 export const archiveAnnouncement = async (id) => {
@@ -283,11 +351,42 @@ export const fetchPublicTeachers = async () => {
   return data || [];
 };
 
+export const normalizeFeedback = (row) => ({
+  id: row?.id,
+  nama: row?.nama || '',
+  email: row?.email || '',
+  phone: row?.phone || '',
+  message: row?.message || '',
+  status: row?.status || 'new',
+  created_at: row?.created_at || '',
+});
+
 export const fetchAdminFeedbacks = async () => {
   const data = await apiClient.get('/api/content/feedback');
-  return data || [];
+  return (data || []).map(normalizeFeedback);
 };
+
+export const updateFeedbackStatus = async (id, status) => normalizeFeedback(
+  await apiClient.put(`/api/content/feedback/${id}`, { status }),
+);
 
 export const deleteFeedback = async (id) => {
   await apiClient.delete(`/api/content/feedback/${id}`);
+};
+
+export const NEWS_CONTENT_UPDATED_EVENT = 'sdnb:news-content-updated';
+export const NEWS_CONTENT_UPDATED_STORAGE_KEY = 'sdnb:news-content-updated';
+
+export const announceNewsContentUpdate = (news = null) => {
+  if (typeof window === 'undefined') return;
+  const detail = { id: news?.id ? String(news.id) : null };
+  window.dispatchEvent(new CustomEvent(NEWS_CONTENT_UPDATED_EVENT, { detail }));
+  try {
+    window.localStorage.setItem(
+      NEWS_CONTENT_UPDATED_STORAGE_KEY,
+      JSON.stringify({ ...detail, at: Date.now() }),
+    );
+  } catch {
+    // The in-tab event above is enough when storage is unavailable.
+  }
 };
