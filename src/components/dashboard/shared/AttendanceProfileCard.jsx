@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { getSessionName } from '@/utils/sessionMapping';
+import { labelStafRole } from '@/lib/staf';
 
 /**
  * AttendanceProfileCard — Shared premium profile card for attendance results.
@@ -47,6 +48,12 @@ const AttendanceProfileCard = ({
   isPentashih = false,
 }) => {
   const isTeacher = variant === 'teacher';
+  const displayJabatan = labelStafRole(jabatan);
+  // The role badge already carries this label; repeating it as the subtitle
+  // duplicates the same words on the card. A more specific jabatan
+  // ("Wakil Kepala Sekolah Bidang Kurikulum") still earns its own line.
+  const roleBadgeLabel = isPentashih ? 'Wakil Kepala Sekolah' : 'Guru';
+  const showJabatan = Boolean(displayJabatan) && displayJabatan !== roleBadgeLabel;
 
   const {
     color: levelColor,
@@ -138,7 +145,7 @@ const AttendanceProfileCard = ({
         {isTeacher && (
           <div className="attendance-profile-card__role-badge">
             <GraduationCap className="w-3.5 h-3.5" />
-            <span>{isPentashih ? 'Wakil Kepala Sekolah' : 'Guru'}</span>
+            <span>{roleBadgeLabel}</span>
           </div>
         )}
       </div>
@@ -158,8 +165,8 @@ const AttendanceProfileCard = ({
       )}
 
       {/* Subtitle */}
-      {isTeacher && jabatan && (
-        <p className="attendance-profile-card__subtitle">{jabatan}</p>
+      {isTeacher && showJabatan && (
+        <p className="attendance-profile-card__subtitle">{displayJabatan}</p>
       )}
 
       {/* Status & Time */}

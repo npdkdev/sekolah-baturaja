@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { inisialNama, sebutanStaf, stafKe } from '@/lib/staf';
+import { inisialNama, labelStafRole, sebutanStaf, stafKe } from '@/lib/staf';
 
 describe('sebutanStaf', () => {
+  it('menerjemahkan label Pentashih lama secara case-insensitive', () => {
+    expect(labelStafRole('Pentashih')).toBe('Wakil Kepala Sekolah');
+    expect(labelStafRole('pentashih')).toBe('Wakil Kepala Sekolah');
+    expect(sebutanStaf({ jabatan: 'Pentashih', roles: ['Pentashih'] }))
+      .toBe('Wakil Kepala Sekolah');
+  });
+
   it('memakai jabatan bila diisi', () => {
     expect(sebutanStaf({ jabatan: 'Guru Kelas I', roles: ['Pengajar'] })).toBe('Guru Kelas I');
   });

@@ -271,6 +271,29 @@ export const createMurojaahSubmission = async ({ santriId, type, content, userId
     });
 };
 
+/**
+ * Setoran yang dicatat guru saat evaluasi tatap muka: sudah dinilai di tempat,
+ * jadi statusnya langsung terisi alih-alih menunggu antrean penilaian.
+ *
+ * Backend hanya menerima ini untuk murid di kelas yang benar-benar dipegang guru
+ * — dijaga `pastikanBolehMurojah` di `academic.go`, bukan sekadar oleh daftar
+ * murid yang ditampilkan di layar.
+ */
+export const createManualMurojaahSubmission = async ({
+    santriId, type, content, feedback, status = 'diterima',
+}) => apiClient.post('/api/academic/murojah', {
+    santri_id: santriId,
+    type,
+    content,
+    recording_path: null,
+    status,
+    feedback: String(feedback || '').trim() || null,
+});
+
+export const deleteMurojaahSubmission = async (id) => {
+    await apiClient.delete(`/api/academic/murojah/${id}`);
+};
+
 export const updateMurojaahReview = async ({ id, status = 'diterima', feedback, userId }) => {
     await apiClient.put(`/api/academic/murojah/${id}`, {
         status,

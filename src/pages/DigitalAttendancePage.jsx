@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { fetchAllClassMutations, fetchClassList, fetchGuruByRfid, fetchSantriByRfid } from '@/lib/dataMasterAdapters';
-import { createMmqAttendance, fetchMmqAttendance, fetchMmqSchedules, saveMmqAttendance } from '@/lib/mmqAdapters';
+import { fetchJadwalList } from '@/lib/scheduleAdapters';
+import {
+  buildGuruLessonAttendancePayload,
+  getTeacherLessonSchedulesForDate,
+  getTeacherLessonSession,
+  getTeacherLessonWindow,
+} from '@/lib/guruAttendance';
 import { fetchHafalanProgress, fetchSantriCharacterStrengths } from '@/lib/academicAdapters';
 import { fetchWebsiteContentMap } from '@/lib/publicContentAdapters';
+
 import { incrementSantriPoints } from '@/lib/gamificationAdapters';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -34,14 +41,11 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Badge } from '@/components/ui/badge';
+
 import { motion, AnimatePresence } from 'framer-motion';
 import MediaPlayerWidget from '@/components/MediaPlayerWidget';
 import {
   DEFAULT_SESSION_TIMES,
-  buildSessionStartTimestamp,
-  calculateTimeDifference,
-  determineAttendanceStatus,
   evaluateAttendanceWindow,
   getJakartaTimeString,
   normalizeAttendanceSessionName,
@@ -372,7 +376,7 @@ const DigitalAttendancePage = () => {
   }, [lastScan]);
 
   // --- processScan (ALL business logic preserved exactly) ---
-  const processScan = async (tagToProcess) => {
+  const processScan = async (tagToProcess, requestedGuruScheduleId = null) => {
       if (!tagToProcess || isLoading) return;
       const tag = normalizeRfidTag(tagToProcess);
 
@@ -398,39 +402,20 @@ const DigitalAttendancePage = () => {
           setRfidTag(''); setTimeout(forceFocus, 50); return;
       }
 
-      // Re-scan confirmation handling for normal attendance
-      if (lastScan?.type === 'confirmation') {
-        if (tag === lastScan.rfid) {
-          setIsLoading(true);
-          try {
-            const now = new Date();
-            const nowTime = getJakartaTimeString(now);
-            const timestamp = now.toISOString();
-
-            if (lastScan.isMMQ) {
-                 await saveMmqAttendance({ id: lastScan.attendanceId, check_in_timestamp: timestamp });
-                 setLastScan(prev => ({ ...prev, type: 'success', time: nowTime, message: 'Absensi MMQ diperbarui!', quote: lastScan.pendingQuote }));
-            } else {
-                const levelInfo = (lastScan.role === 'santri' && lastScan.kategori !== 'Dewasa') ? getLevelInfo(lastScan.points, lastScan.gender) : null;
-                setLastScan(prev => ({ ...prev, type: 'success', levelInfo, message: 'Absensi sudah tercatat.', quote: lastScan.pendingQuote }));
-            }
-          } catch (err) { setLastScan({ type: 'error', message: err.message, name: 'Error' }); }
-          finally { setIsLoading(false); setRfidTag(''); setTimeout(forceFocus, 50); return; }
-        } else { setLastScan(null); setRfidTag(''); return; }
-      }
 
       setIsLoading(true);
       setLastScan({ type: 'scanning' });
 
+      let user = null, userRole = '';
       try {
         await new Promise(resolve => setTimeout(resolve, 300));
         const todayDate = new Date();
         const todayStr = getLocalDateString(todayDate);
 
-        let user = null, userRole = '', sesiUser = '', kategori = '', guruClasses = [];
+        let sesiUser = '', kategori = '', guruClasses = [], guruLessonSchedule = null, isPentashih = false;
         let guruData = await fetchGuruByRfid(tag).catch(() => null);
 
-        // Check MMQ Schedule if it's a Guru
+        // School attendance is driven by the school lesson schedule.
         if (guruData) {
             const foto_url = await resolveAvatarUrl({
                 ownerType: 'guru',
@@ -438,117 +423,65 @@ const DigitalAttendancePage = () => {
                 fallbackUrl: guruData.foto_url,
             });
             user = { ...guruData, foto_url }; userRole = 'guru';
-            const todayDay = todayDate.getDay();
-            const mmqSchedules = await fetchMmqSchedules().catch(() => []);
-            const mmqSchedule = (mmqSchedules || []).find(
-                (s) => s.is_active && Number(s.day_of_week) === todayDay
-            ) || null;
+            isPentashih = Boolean(
+              (user.roles && user.roles.includes('Pentashih'))
+              || (user.jabatan && user.jabatan.toLowerCase().includes('pentashih'))
+            );
 
-            if (mmqSchedule) {
-                try {
-                    const timestamp = new Date().toISOString();
-                    const sessionStart = `${todayStr}T${mmqSchedule.start_time}+07:00`;
+            if (!isPentashih) {
+              const schoolSchedules = await fetchJadwalList();
+              const todaySchedules = getTeacherLessonSchedulesForDate(schoolSchedules, {
+                guruId: user.id,
+                date: todayDate,
+              });
+              const eligibleSchedules = todaySchedules.filter((schedule) => (
+                getTeacherLessonWindow(schedule, todayDate).canRecord
+              ));
 
-                    let rawStatus = determineAttendanceStatus(timestamp, sessionStart);
-                    const timeDiff = calculateTimeDifference(timestamp, sessionStart);
-
-                    const allowedStatuses = ['Hadir', 'Terlambat', 'Tidak Hadir', 'Alpha', 'Izin', 'Sakit'];
-                    let validStatus = 'Hadir';
-
-                    if (rawStatus === 'Terlambat') validStatus = 'Terlambat';
-                    else if (['Tidak Hadir', 'Alpha', 'Ghaib'].includes(rawStatus)) validStatus = 'Tidak Hadir';
-                    else if (['Tepat Waktu', 'Hadir'].includes(rawStatus)) validStatus = 'Hadir';
-                    else if (rawStatus === 'Izin') validStatus = 'Izin';
-                    else if (rawStatus === 'Sakit') validStatus = 'Sakit';
-
-                    const isValidUUID = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-
-                    if (!allowedStatuses.includes(validStatus)) {
-                        throw new Error(`Sistem Error: Status absensi '${validStatus}' tidak diizinkan.`);
-                    }
-
-                    if (!mmqSchedule.id) {
-                        const fallbackSchedule = (mmqSchedules || []).find((s) => s.is_active && s.id);
-                        if (fallbackSchedule?.id) {
-                            mmqSchedule.id = fallbackSchedule.id;
-                        } else {
-                            throw new Error("Gagal: Sesi MMQ untuk hari ini tidak ditemukan di database.");
-                        }
-                    }
-
-                    if (!isValidUUID(mmqSchedule.id)) {
-                        throw new Error("Gagal: Format ID Jadwal MMQ tidak valid.");
-                    }
-
-                    if (!user.id || !isValidUUID(user.id)) {
-                        throw new Error("Gagal: Format ID Guru tidak valid.");
-                    }
-
-                    const todayMmq = await fetchMmqAttendance({ date: todayStr }).catch(() => {
-                        throw new Error("Gagal memeriksa status absensi sebelumnya.");
-                    });
-                    const existingMMQ = (todayMmq || []).find(
-                        (row) => row.schedule_id === mmqSchedule.id && row.guru_id === user.id
-                    ) || null;
-
-                    const randomQuote = adultQuotes[Math.floor(Math.random() * adultQuotes.length)];
-
-                    if (existingMMQ) {
-                        setLastScan({
-                            type: 'confirmation',
-                            role: 'guru',
-                            isMMQ: true,
-                            message: 'Konfirmasi Kehadiran MMQ',
-                            name: user.nama,
-                            photo: user.foto_url,
-                            rfid: tag,
-                            attendanceId: existingMMQ.id,
-                            pendingQuote: randomQuote
-                        });
-                        return;
-                    }
-
-                    const insertPayload = {
-                        guru_id: user.id,
-                        schedule_id: mmqSchedule.id,
-                        attendance_date: todayStr,
-                        check_in_timestamp: timestamp,
-                        status: validStatus
-                    };
-
-                    try {
-                        await createMmqAttendance(insertPayload);
-                    } catch (mmqError) {
-                        let friendlyMessage = "Gagal menyimpan absensi MMQ ke database.";
-                        if (String(mmqError?.message || '').includes("mmq_attendance_status_check")) {
-                            friendlyMessage = `Gagal: Status "${validStatus}" tidak sesuai dengan aturan database. Hubungi admin.`;
-                        } else if (mmqError?.code === '23505' || String(mmqError?.message || '').includes('duplicate')) {
-                            friendlyMessage = 'Guru sudah tercatat hadir pada jadwal MMQ ini.';
-                        }
-                        throw new Error(friendlyMessage);
-                    }
-
-                    let msg = `Absensi MMQ: ${validStatus}`;
-                    if (validStatus === 'Terlambat') msg += ` (${timeDiff} menit)`;
-
-                    setLastScan({
-                        type: 'mmq_success',
-                        name: user.nama,
-                        photo: user.foto_url,
-                        status: validStatus,
-                        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                        message: msg,
-                        quote: randomQuote
-                    });
-                } catch (err) {
-                    setLastScan({
-                        type: 'error',
-                        message: err.message || "Terjadi kesalahan sistem saat absensi MMQ.",
-                        name: user.nama || "Error",
-                        photo: user?.foto_url
-                    });
-                }
+              if (eligibleSchedules.length === 0) {
+                setLastScan({
+                  type: 'warning',
+                  role: 'guru',
+                  name: user.nama,
+                  photo: user.foto_url,
+                  rfid: tag,
+                  message: todaySchedules.length > 0
+                    ? 'Tidak ada jadwal pelajaran yang sedang berlangsung untuk guru ini.'
+                    : 'Tidak ada jadwal pelajaran guru ini pada hari ini.',
+                });
                 return;
+              }
+
+              if (requestedGuruScheduleId) {
+                guruLessonSchedule = eligibleSchedules.find(
+                  (schedule) => schedule.id === requestedGuruScheduleId
+                ) || null;
+                if (!guruLessonSchedule) {
+                  setLastScan({
+                    type: 'warning',
+                    role: 'guru',
+                    name: user.nama,
+                    photo: user.foto_url,
+                    rfid: tag,
+                    message: 'Jadwal pelajaran yang dipilih sudah tidak tersedia atau waktu absensinya telah berakhir.',
+                  });
+                  return;
+                }
+              } else if (eligibleSchedules.length > 1) {
+                setLastScan({
+                  type: 'guru_schedule_selection',
+                  role: 'guru',
+                  name: user.nama,
+                  photo: user.foto_url,
+                  rfid: tag,
+                  schedules: eligibleSchedules,
+                });
+                return;
+              } else {
+                guruLessonSchedule = eligibleSchedules[0];
+              }
+
+              sesiUser = getTeacherLessonSession(guruLessonSchedule);
             }
 
             // Normal Guru Attendance Session Assignment
@@ -564,7 +497,7 @@ const DigitalAttendancePage = () => {
               .map(sesi => ({ sesi, window: evaluateAttendanceWindow({ timestamp: todayDate, dateStr: todayStr, sesi, sessionTimes }) }))
               .filter(item => item.window.canRecord)
               .sort((a, b) => new Date(b.window.openAt) - new Date(a.window.openAt));
-            sesiUser = matchingSessions[0]?.sesi || '';
+            if (!guruLessonSchedule) sesiUser = matchingSessions[0]?.sesi || '';
 
             if (!sesiUser && assignedSessions.length > 0) {
               const priorRows = await fetchAttendance({
@@ -610,7 +543,7 @@ const DigitalAttendancePage = () => {
 
         if (!user) { setLastScan({ type: 'error', message: 'RFID tidak dikenal. Tidak ada absensi yang dibuat.', name: 'Tidak Dikenal' }); return; }
 
-        const isPentashih = userRole === 'guru' && ((user.roles && user.roles.includes('Pentashih')) || (user.jabatan && user.jabatan.toLowerCase().includes('pentashih')));
+
         if (userRole === 'guru' && !sesiUser && !isPentashih) {
               // classesForInfo, not guruClasses: redeclaring the outer binding in
               // this block put the `guruClasses.length` read above in its TDZ.
@@ -654,7 +587,14 @@ const DigitalAttendancePage = () => {
             ...(userRole === 'guru' && { sesi: sesiUser }),
         }).catch(() => []);
         const existingAttendance = userRole === 'guru'
-            ? (existingRows || [])[0] || null
+            ? (
+                guruLessonSchedule
+                  ? (
+                      (existingRows || []).find((row) => row.jadwal_pelajaran_id === guruLessonSchedule.id)
+                      || (existingRows || []).find((row) => !row.jadwal_pelajaran_id && row.sesi === sesiUser)
+                    )
+                  : (existingRows || [])[0]
+              ) || null
             : [...(existingRows || [])].sort((a, b) => (
                 String(a.check_in_timestamp || a.created_at || '').localeCompare(
                     String(b.check_in_timestamp || b.created_at || ''))
@@ -693,14 +633,37 @@ const DigitalAttendancePage = () => {
         const calendarContext = userRole === 'guru'
           ? await fetchCalendarContext(todayStr, todayStr)
           : null;
-        const checkInStatus = userRole === 'santri'
-          ? resolveSantriAttendanceSession({
-              timestamp: todayDate,
-              dateStr: todayStr,
-              assignedSession: sesiUser,
-              sessionTimes,
-            })
-          : canCheckIn(sesiUser, userRole, isPentashih, todayDate, sessionTimes, calendarContext);
+        if (userRole === 'guru' && !isPentashih) {
+          const isActiveDay = calendarContext
+            ? isCalendarDateActive({ dateString: todayStr, ...calendarContext })
+            : todayDate.getDay() >= 1 && todayDate.getDay() <= 5;
+          if (!isActiveDay) {
+            setLastScan({
+              type: 'warning',
+              message: 'Absensi tidak tersedia pada hari libur kalender akademik.',
+              name: user.nama || user.nama_lengkap,
+              photo: user.foto_url,
+              role: userRole,
+              rfid: tag,
+            });
+            return;
+          }
+        }
+
+        let checkInStatus;
+        if (userRole === 'santri') {
+          checkInStatus = resolveSantriAttendanceSession({
+            timestamp: todayDate,
+            dateStr: todayStr,
+            assignedSession: sesiUser,
+            sessionTimes,
+          });
+        } else if (guruLessonSchedule) {
+          const lessonWindow = getTeacherLessonWindow(guruLessonSchedule, todayDate);
+          checkInStatus = { ...lessonWindow, can: lessonWindow.canRecord };
+        } else {
+          checkInStatus = canCheckIn(sesiUser, userRole, isPentashih, todayDate, sessionTimes, calendarContext);
+        }
         if (!checkInStatus.can) {
           setLastScan({ type: 'warning', message: checkInStatus.message, name: user.nama || user.nama_lengkap, photo: user.foto_url, role: userRole, rfid: tag });
           return;
@@ -716,17 +679,24 @@ const DigitalAttendancePage = () => {
               status: attendanceStatusText,
               attendedSession: checkInStatus.attendedSession,
             })
-          : {
-              user_id: user.id,
-              role: userRole,
-              attendance_date: todayStr,
-              check_in_time: getJakartaTimeString(new Date(timestamp)),
-              check_in_timestamp: timestamp,
-              class_id: null,
-              sesi: sesiUser || (isPentashih ? 'Flex' : 'Pagi'),
-              status: attendanceStatusText,
-              source: 'rfid',
-          };
+          : guruLessonSchedule
+            ? buildGuruLessonAttendancePayload({
+                guruId: user.id,
+                schedule: guruLessonSchedule,
+                timestamp: todayDate,
+                status: attendanceStatusText,
+              })
+            : {
+                user_id: user.id,
+                role: userRole,
+                attendance_date: todayStr,
+                check_in_time: getJakartaTimeString(new Date(timestamp)),
+                check_in_timestamp: timestamp,
+                class_id: null,
+                sesi: sesiUser || (isPentashih ? 'Flex' : 'Pagi'),
+                status: attendanceStatusText,
+                source: 'rfid',
+              };
         let insertError = null;
         try {
           if (shouldRestoreAbsentAttendance) {
@@ -791,7 +761,13 @@ const DigitalAttendancePage = () => {
             ...successData,
             message: userRole === 'santri'
               ? getSantriAttendanceSuccessMessage({ assignedSession: sesiUser, attendedSession: newAttendance.attended_session })
-              : `Absensi ${isPentashih ? '' : `sesi ${sesiUser}`} berhasil!`,
+              : (isPentashih
+                ? 'Absensi berhasil!'
+                : 'Absensi ' + (
+                    guruLessonSchedule
+                      ? [guruLessonSchedule.mata_pelajaran_nama || 'Jadwal pelajaran', guruLessonSchedule.nama_kelas].filter(Boolean).join(' · ')
+                      : 'sesi ' + sesiUser
+                  ) + ' berhasil!'),
             time: newAttendance.check_in_time,
             status: newAttendance.status,
             points: newPoints,
@@ -802,6 +778,14 @@ const DigitalAttendancePage = () => {
             guruStats,
           });
         }
+      } catch (err) {
+        setLastScan({
+          type: 'error',
+          message: getAttendanceErrorMessage(err),
+          name: user?.nama || user?.nama_lengkap || 'Absensi guru',
+          photo: user?.foto_url,
+          role: userRole || 'guru',
+        });
       } finally { setIsLoading(false); setRfidTag(''); setTimeout(forceFocus, 50); }
   };
 
@@ -832,48 +816,36 @@ const DigitalAttendancePage = () => {
         </div>
       );
     }
-
-    // MMQ Success
-    if (scan.type === 'mmq_success') {
+    // School lesson schedule selection
+    if (scan.type === 'guru_schedule_selection') {
       return (
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="attendance-result" role="status" aria-live="polite">
-          <AttendanceProfileCard
-            variant="teacher"
-            name={scan.name}
-            photo={scan.photo}
-            status={scan.status === 'Terlambat' ? 'Terlambat' : 'Hadir'}
-            time={scan.time}
-            message={scan.message}
-            quote={scan.quote}
-            showSuccessBadge
-          />
-        </motion.div>
-      );
-    }
-
-    // Confirmation
-    if (scan.type === 'confirmation') {
-      return (
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="attendance-result" role="status" aria-live="polite">
-          <div className="attendance-result-card attendance-result-card--info">
-            {scan.isMMQ && (
-              <div className="absolute top-4 right-4">
-                <Badge className="bg-[hsl(var(--att-accent-soft))] text-[hsl(var(--att-accent))] border-none text-xs">
-                  <Library className="w-3 h-3 mr-1" /> MMQ
-                </Badge>
-              </div>
-            )}
-            <div className="attendance-confirmation">
-              <Avatar className="attendance-confirmation__avatar">
-                <AvatarImage src={scan.photo} className="object-cover" />
-                <AvatarFallback>{scan.name?.[0]}</AvatarFallback>
-              </Avatar>
-              <h2 className="attendance-confirmation__name">{scan.name}</h2>
-              <p className="attendance-confirmation__text">Anda sudah absen hari ini.</p>
-              <div className="attendance-confirmation__prompt">
-                <p>Tap kartu sekali lagi untuk update jam pulang/masuk.</p>
-              </div>
-              <p className="attendance-confirmation__hint">Atau biarkan untuk membatalkan.</p>
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="attendance-result" role="region" aria-label="Pilih jadwal pelajaran">
+          <div className="attendance-result-card" style={{ maxWidth: '42rem' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="w-5 h-5" style={{ color: 'hsl(var(--att-accent))' }} />
+              <h2 className="text-xl font-bold" style={{ color: 'hsl(var(--att-text-primary))' }}>Pilih Jadwal Pelajaran</h2>
+            </div>
+            <p className="text-sm mb-5" style={{ color: 'hsl(var(--att-text-secondary))' }}>
+              Lebih dari satu jadwal sedang berlangsung. Pilih kelas dan mata pelajaran untuk mencatat absensi.
+            </p>
+            <div className="grid gap-3">
+              {scan.schedules.map((schedule) => (
+                <button
+                  key={schedule.id}
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => processScan(scan.rfid, schedule.id)}
+                  className="w-full rounded-xl border px-4 py-3 text-left transition-colors hover:border-[hsl(var(--att-accent))] hover:bg-[hsl(var(--att-accent-soft))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--att-accent))] disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{ borderColor: 'hsl(var(--att-border-subtle))', backgroundColor: 'hsl(var(--att-surface))' }}
+                >
+                  <span className="block font-semibold" style={{ color: 'hsl(var(--att-text-primary))' }}>
+                    {schedule.mata_pelajaran_nama || 'Mata pelajaran'}
+                  </span>
+                  <span className="mt-1 block text-sm" style={{ color: 'hsl(var(--att-text-secondary))' }}>
+                    {schedule.nama_kelas || 'Kelas'} · {String(schedule.jam_mulai || '').slice(0, 5)}–{String(schedule.jam_selesai || '').slice(0, 5)}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
         </motion.div>
@@ -1023,19 +995,6 @@ const DigitalAttendancePage = () => {
             showSuccessBadge={scan.type === 'success'}
             isPentashih={isPentashih}
           />
-          {/* Pentashih success: extra info grid */}
-          {scan.type === 'success' && isPentashih && scan.name && (
-            <div className="attendance-stats-row mt-4">
-              <div className="attendance-stat-item">
-                <span className="attendance-stat-item__value">{scan.name}</span>
-                <span className="attendance-stat-item__label">Nama</span>
-              </div>
-              <div className="attendance-stat-item attendance-stat-item--amber">
-                <span className="attendance-stat-item__value">{scan.jabatan || '-'}</span>
-                <span className="attendance-stat-item__label">Jabatan</span>
-              </div>
-            </div>
-          )}
         </motion.div>
       );
     }

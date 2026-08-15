@@ -44,19 +44,23 @@
 
   position: relative;
   min-height: 100vh;
-  font-family: 'Archivo', system-ui, sans-serif;
+  font-family: 'Poppins', system-ui, sans-serif;
   color: #1b1c28;
 }
 
-/* Headings adopt the display face used across the public site. */
+/* Dashboard headings use the Montserrat display face. */
 .sdnb-dash h1,
 .sdnb-dash h2,
-.sdnb-dash h3,
 .sdnb-dash .admin-page-header h1,
 .sdnb-dash .admin-stat-card__value,
 .sdnb-dash .admin-stat-card-value {
-  font-family: 'Plus Jakarta Sans', 'Archivo', system-ui, sans-serif;
+  font-family: 'Montserrat', 'Poppins', system-ui, sans-serif;
   letter-spacing: -0.02em;
+}
+
+/* Smaller dashboard headings use the editorial utility face. */
+.sdnb-dash :is(h3, h4, h5, h6) {
+  font-family: 'Montserrat', 'Poppins', system-ui, sans-serif;
 }
 
 /* ── background wash + floating orbs (same as the public shell) ──────────── */
@@ -119,20 +123,21 @@ html[data-theme="dark"] .sdnb-dash .admin-form-section {
 }
 .sdnb-dash .admin-nav-pill {
   border-radius: 12px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   color: #2c2f45;
   transition: background .25s ease, color .25s ease;
 }
 .sdnb-dash .admin-nav-pill:hover { background: rgba(255, 255, 255, .7); color: #4a58e0; }
-.sdnb-dash .admin-nav-pill.active { color: #fff; font-weight: 700; }
+.sdnb-dash .admin-nav-pill.active { color: #fff; font-weight: 600; }
 .sdnb-dash .admin-nav-pill-indicator {
   background: linear-gradient(135deg, var(--sekolah-aksen), var(--sekolah-aksen-tengah) 55%, var(--sekolah-aksen-ujung));
   border-radius: 12px;
   box-shadow: 0 14px 30px -12px rgba(95, 105, 235, .95), inset 0 1px 0 rgba(255, 255, 255, .5);
 }
 .sdnb-dash .admin-nav-group-label {
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: .12em;
   text-transform: uppercase;
   color: #8a8ea8;

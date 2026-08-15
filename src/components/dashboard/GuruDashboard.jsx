@@ -15,6 +15,10 @@ import MmqSection from '@/components/dashboard/guru/MmqSection';
 import JadwalSaya from '@/components/dashboard/shared/JadwalSaya';
 import GuruAttendanceRecap from '@/components/dashboard/admin/GuruAttendanceRecap';
 import AttendanceDetailsModal from '@/components/dashboard/shared/AttendanceDetailsModal';
+import ModulNilai from '@/components/dashboard/shared/ModulNilai';
+import ModulKontenKelas from '@/components/dashboard/shared/ModulKontenKelas';
+import ModulKomunikasiWali from '@/components/dashboard/shared/ModulKomunikasiWali';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AttendanceStatusIcon from '@/components/dashboard/shared/AttendanceStatusIcon';
 import { fetchGuruDetail, updateGuru, updateSantriJilid } from '@/lib/dataMasterAdapters';
 import { fetchAttendance } from '@/lib/attendanceAdapters';
@@ -29,6 +33,8 @@ import { buildSessionStartTimestamp, calculateTimeDifference, resolveAttendanceR
 import {
   buildHafalanScoreMap,
   DEVELOPMENT_SCORE_OPTIONS,
+  createManualMurojaahSubmission,
+  deleteMurojaahSubmission,
   fetchClassesWithActiveSantriForTeacher,
   fetchHafalanItems,
   fetchHafalanProgress,
@@ -48,6 +54,7 @@ import StudentTransferModal from '@/components/dashboard/guru/StudentTransferMod
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getTingkatLevels } from '@/lib/tahfizhLevels';
+import { labelStafRole } from '@/lib/staf';
 
 const ProfileConstellationScene = lazy(() => import('@/components/dashboard/santri/SantriLevelScene'));
 
@@ -317,11 +324,19 @@ const GuruDashboard = () => {
     }
   };
 
-  const handleSubmitFeedback = async () => {
+  // Status 'perlu_perbaikan' sudah lama diterima basis data dan backend, tetapi
+  // tidak pernah bisa dicapai dari layar ini karena statusnya ditulis mati
+  // 'diterima'. Sekarang penilainya yang memilih.
+  const handleSubmitFeedback = async (status = 'diterima') => {
     if (!currentSubmission) return;
     try {
-      await updateMurojaahReview({ id: currentSubmission.id, status: 'diterima', feedback, userId: user.id });
-      toast({ title: 'Berhasil', description: 'Umpan balik telah disimpan.' });
+      await updateMurojaahReview({ id: currentSubmission.id, status, feedback, userId: user.id });
+      toast({
+        title: 'Berhasil',
+        description: status === 'perlu_perbaikan'
+          ? 'Setoran ditandai perlu perbaikan.'
+          : 'Umpan balik telah disimpan.',
+      });
       setIsMurojaahOpen(false);
       setCurrentSubmission(null);
       refreshSubmissions();
@@ -330,11 +345,21 @@ const GuruDashboard = () => {
     }
   };
 
-  const confirmDeleteSubmission = (submissionId) => {
+  const confirmDeleteSubmission = (submission) => {
     setConfirmDialog({
-        isOpen: true, title: 'Hapus Setoran', description: 'Apakah Anda yakin ingin menghapus setoran ini?',
+        isOpen: true,
+        title: 'Hapus setoran murojaah?',
+        description: `Setoran "${submission.content}" milik ${submission.santri?.nama_lengkap || 'murid ini'} akan dihapus `
+            + 'dari daftar. Penghapusan tercatat beserta salinan datanya, jadi masih dapat ditelusuri bila keliru.',
         onConfirm: async () => {
-            toast({ title: "Aksi tidak tersedia", description: "Penghapusan setoran murojaah tidak dibuka untuk guru pada fase ini.", variant: "destructive" });
+            try {
+                await deleteMurojaahSubmission(submission.id);
+                toast({ title: 'Terhapus', description: 'Setoran murojaah berhasil dihapus.' });
+                if (currentSubmission?.id === submission.id) setCurrentSubmission(null);
+                await refreshSubmissions();
+            } catch (error) {
+                toast({ title: 'Gagal menghapus', description: getAcademicErrorMessage(error), variant: 'destructive' });
+            }
         }
     });
   };
@@ -346,8 +371,24 @@ const GuruDashboard = () => {
     }
 
     setIsSubmittingManual(true);
-    setIsSubmittingManual(false);
-    toast({ title: "Belum tersedia", description: "Input setoran manual guru ditunda. Murid dapat mengajukan murojaah dari dashboard murid.", variant: "destructive" });
+    try {
+        // Setoran tatap muka sudah dinilai di tempat, jadi langsung berstatus
+        // diterima — bukan masuk antrean 'menunggu' seperti pengajuan murid.
+        await createManualMurojaahSubmission({
+            santriId: manualMurojaahForm.santri_id,
+            type: manualMurojaahForm.category,
+            content: manualMurojaahForm.item_name,
+            feedback: manualMurojaahForm.feedback,
+            status: 'diterima',
+        });
+        toast({ title: "Tersimpan", description: "Setoran murojaah berhasil dicatat." });
+        setManualMurojaahForm({ santri_id: '', category: 'Surat', item_name: '', feedback: '' });
+        await refreshSubmissions();
+    } catch (error) {
+        toast({ title: "Gagal menyimpan", description: getAcademicErrorMessage(error), variant: "destructive" });
+    } finally {
+        setIsSubmittingManual(false);
+    }
   };
 
   const pendingSubmissionsCount = useMemo(() => murojaahSubmissions.filter(sub => sub.status === 'menunggu').length, [murojaahSubmissions]);
@@ -475,7 +516,7 @@ const GuruDashboard = () => {
                 <div className="guru-profile-card__eyebrow"><Sparkles className="h-3.5 w-3.5" /> Profil pengajar</div>
                 <div>
                   <h2 className="guru-profile-card__name">{guruData.nama}</h2>
-                  <p className="guru-profile-card__role">{guruData.jabatan}</p>
+                  <p className="guru-profile-card__role">{labelStafRole(guruData.jabatan)}</p>
                 </div>
                 <div className="guru-profile-card__metrics" aria-label="Ringkasan profil guru">
                   <span className="guru-profile-card__metric"><Users className="h-4 w-4" /><strong>{myClasses.length}</strong> kelas</span>
@@ -490,15 +531,7 @@ const GuruDashboard = () => {
             </div>
           </section>
         )}
-        {/* Jadwal mengajar. Sumbernya endpoint yang sama dengan panel admin,
-            disaring guru_id, dan hanya bisa dibaca — penyuntingan tetap di admin. */}
-        <JadwalSaya
-          guruId={guruData?.id}
-          title="Jadwal Mengajar Saya"
-          emptyText="Belum ada jadwal mengajar untuk periode ini. Jadwal disusun admin di panel Jadwal Pelajaran."
-        />
-
-        <div className="space-y-8">
+        <div className="mt-6 space-y-8 md:mt-8">
             {myClasses.map(cls => (
                 <Card key={cls.id} className="shadow-lg hover:shadow-xl transition-shadow duration-300 border-border/50">
                     <CardHeader className={cn("p-4 rounded-t-lg border-b bg-gradient-to-r", headerGradient)}>
@@ -609,6 +642,47 @@ const GuruDashboard = () => {
                 </Card>
             ))}
         </div>
+
+        {/* Jadwal dan nilai dipindah ke subtab supaya tabel data murid tetap
+            jadi yang pertama terlihat, bukan terdorong ke bawah dua panel. */}
+        <Tabs defaultValue="jadwal" className="mt-6 md:mt-8">
+          <TabsList className="grid w-full grid-cols-2 sm:inline-flex sm:w-auto md:grid-cols-4">
+            <TabsTrigger value="jadwal">Jadwal Mengajar</TabsTrigger>
+            <TabsTrigger value="nilai">Nilai Asesmen</TabsTrigger>
+            <TabsTrigger value="konten">Materi &amp; Tugas</TabsTrigger>
+            <TabsTrigger value="wali">Komunikasi Wali</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="jadwal" className="mt-4">
+            {/* Sumbernya endpoint yang sama dengan panel admin, disaring guru_id,
+                dan hanya bisa dibaca — penyuntingan tetap di admin. */}
+            <JadwalSaya
+              guruId={guruData?.id}
+              title="Jadwal Mengajar Saya"
+              emptyText="Belum ada jadwal mengajar untuk periode ini. Jadwal disusun admin di panel Jadwal Pelajaran."
+            />
+          </TabsContent>
+
+          <TabsContent value="nilai" className="mt-4">
+            {/* Kelas & mapel diturunkan dari jadwal mengajar; backend menolak
+                kombinasi yang tidak diampu, bukan sekadar disembunyikan. */}
+            <ModulNilai guruId={guruData?.id} />
+          </TabsContent>
+
+          <TabsContent value="konten" className="mt-4">
+            {/* Murid hanya membaca yang berstatus terbit; draf tidak pernah bocor.
+                Konten kelas sengaja tidak menumpang tabel `announcements`, yang
+                memasok situs publik. */}
+            <ModulKontenKelas guruId={guruData?.id} />
+          </TabsContent>
+
+          <TabsContent value="wali" className="mt-4">
+            {/* Hanya menyiapkan pesan dan membuka WhatsApp guru; tidak ada pesan
+                yang terkirim dari sini dan tidak ada kredensial yang disimpan.
+                Nomor selalu dari basis data, tidak pernah ditanam di kode. */}
+            <ModulKomunikasiWali guruNama={guruData?.nama} />
+          </TabsContent>
+        </Tabs>
       </div>
       <Dialog open={Boolean(previewAvatar)} onOpenChange={(open) => { if (!open) setPreviewAvatar(null); }}>
         <DialogContent className="max-w-md overflow-hidden p-0">
@@ -747,7 +821,10 @@ const GuruDashboard = () => {
                                 <div className="space-y-3 pt-4 border-t border-border">
                                     <label className="font-semibold text-sm">Berikan Umpan Balik / Nilai</label>
                                     <Textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Tuliskan umpan balik untuk murid ini..." className="min-h-[100px]" />
-                                    <Button onClick={handleSubmitFeedback} className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-md"><Send className="w-4 h-4 mr-2"/> Simpan Penilaian</Button>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        <Button onClick={() => handleSubmitFeedback('diterima')} className="bg-blue-600 hover:bg-blue-700 text-white shadow-md"><Send className="w-4 h-4 mr-2"/> Terima Setoran</Button>
+                                        <Button variant="outline" onClick={() => handleSubmitFeedback('perlu_perbaikan')}>Perlu Perbaikan</Button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-2 rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-400/25 dark:bg-slate-900/70">
@@ -757,7 +834,7 @@ const GuruDashboard = () => {
                             )}
 
                             <div className="pt-8 text-center">
-                                <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => confirmDeleteSubmission(currentSubmission.id)}>
+                                <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => confirmDeleteSubmission(currentSubmission)}>
                                     <Trash2 className="w-4 h-4 mr-2" /> Hapus Setoran Ini
                                 </Button>
                             </div>

@@ -14,6 +14,7 @@ import {
 import { toast } from '@/components/ui/use-toast';
 import { resolveAvatarRecord, resolveAvatarRecords } from '@/lib/storageAdapters';
 import { fetchAllSantri, fetchClassList, fetchGuruDetail } from '@/lib/dataMasterAdapters';
+import { labelStafRole } from '@/lib/staf';
 import { fetchJilidHistoryForSantriList } from '@/lib/academicAdapters';
 import ClassManagement from '@/components/dashboard/admin/ClassManagement';
 import * as XLSX from 'xlsx';
@@ -360,7 +361,7 @@ const PentashihDashboard = () => {
                   <div className="min-w-0 flex-1">
                     <h2 className="text-base font-bold leading-tight truncate">{guruData.nama}</h2>
                     <span className="inline-flex items-center gap-1 text-purple-100 text-[11px] font-semibold bg-white/20 px-2 py-0.5 rounded-full mt-0.5">
-                      <ShieldCheck className="w-3 h-3" /> {guruData.jabatan || 'Wakil Kepala Sekolah'}
+                      <ShieldCheck className="w-3 h-3" /> {labelStafRole(guruData.jabatan || 'Wakil Kepala Sekolah')}
                     </span>
                   </div>
                 </div>

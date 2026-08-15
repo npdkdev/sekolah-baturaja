@@ -38,10 +38,13 @@ func NewAttendanceHandler(db *pgxpool.Pool) *AttendanceHandler {
 func (h *AttendanceHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
-	// Record
+	// Record. Create stays open to operational roles because the RFID kiosk runs
+	// under whichever staff account opened it. Correcting an existing row is a
+	// different act: only back-office roles may do it, enforced inside the
+	// handlers so superadmin is covered too.
 	r.Post("/", h.Create)
 	r.Put("/{id}", h.Update)
-	r.With(middleware.RequireRole("admin", "guru", "tata_usaha")).Put("/{id}/absent", h.MarkAbsent)
+	r.Put("/{id}/absent", h.MarkAbsent)
 
 	// Fetch
 	r.Get("/", h.List)
@@ -78,31 +81,35 @@ func (h *AttendanceHandler) Routes() chi.Router {
 // -----------------------------------------------------------------------------
 
 type attendanceInput struct {
-	UserID           string  `json:"user_id"`
-	Role             string  `json:"role"`
-	AttendanceDate   string  `json:"attendance_date"`
-	CheckInTime      *string `json:"check_in_time"`
-	CheckInTimestamp *string `json:"check_in_timestamp"`
-	ClassID          *string `json:"class_id"`
-	Sesi             string  `json:"sesi"`
-	AttendedSession  *string `json:"attended_session"`
-	Status           string  `json:"status"`
-	Source           string  `json:"source"`
+	UserID            string  `json:"user_id"`
+	Role              string  `json:"role"`
+	AttendanceDate    string  `json:"attendance_date"`
+	CheckInTime       *string `json:"check_in_time"`
+	CheckInTimestamp  *string `json:"check_in_timestamp"`
+	ClassID           *string `json:"class_id"`
+	JadwalPelajaranID *string `json:"jadwal_pelajaran_id"`
+	MataPelajaranID   *string `json:"mata_pelajaran_id"`
+	Sesi              string  `json:"sesi"`
+	AttendedSession   *string `json:"attended_session"`
+	Status            string  `json:"status"`
+	Source            string  `json:"source"`
 }
 
 type attendanceRow struct {
-	ID               string  `json:"id"`
-	UserID           string  `json:"user_id"`
-	Role             string  `json:"role"`
-	AttendanceDate   string  `json:"attendance_date"`
-	CheckInTime      *string `json:"check_in_time"`
-	CheckInTimestamp *string `json:"check_in_timestamp"`
-	ClassID          *string `json:"class_id"`
-	Sesi             *string `json:"sesi"`
-	AttendedSession  *string `json:"attended_session"`
-	Status           *string `json:"status"`
-	Source           *string `json:"source"`
-	CreatedAt        *string `json:"created_at"`
+	ID                string  `json:"id"`
+	UserID            string  `json:"user_id"`
+	Role              string  `json:"role"`
+	AttendanceDate    string  `json:"attendance_date"`
+	CheckInTime       *string `json:"check_in_time"`
+	CheckInTimestamp  *string `json:"check_in_timestamp"`
+	ClassID           *string `json:"class_id"`
+	JadwalPelajaranID *string `json:"jadwal_pelajaran_id"`
+	MataPelajaranID   *string `json:"mata_pelajaran_id"`
+	Sesi              *string `json:"sesi"`
+	AttendedSession   *string `json:"attended_session"`
+	Status            *string `json:"status"`
+	Source            *string `json:"source"`
+	CreatedAt         *string `json:"created_at"`
 }
 
 const attendanceSelectCols = `
@@ -113,6 +120,8 @@ const attendanceSelectCols = `
 	check_in_time::text,
 	check_in_timestamp::text,
 	class_id::text,
+	jadwal_pelajaran_id::text,
+	mata_pelajaran_id::text,
 	sesi,
 	attended_session,
 	status,
@@ -128,6 +137,7 @@ func scanAttendance(rows pgx.Rows) ([]attendanceRow, error) {
 		if err := rows.Scan(
 			&a.ID, &a.UserID, &a.Role, &a.AttendanceDate,
 			&a.CheckInTime, &a.CheckInTimestamp, &a.ClassID,
+			&a.JadwalPelajaranID, &a.MataPelajaranID,
 			&a.Sesi, &a.AttendedSession, &a.Status, &a.Source, &a.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -157,8 +167,8 @@ func (h *AttendanceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if in.UserID == "" || in.AttendanceDate == "" || in.Sesi == "" {
-		jsonError(w, "user_id, attendance_date, dan sesi wajib diisi", http.StatusBadRequest)
+	if in.UserID == "" || in.AttendanceDate == "" {
+		jsonError(w, "user_id dan attendance_date wajib diisi", http.StatusBadRequest)
 		return
 	}
 
@@ -169,6 +179,21 @@ func (h *AttendanceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidAppRole(in.Role) {
 		jsonError(w, "role tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.validateGuruLessonAttendance(r.Context(), &in, ctxRole, ctxUser); err != nil {
+		var requestErr *attendanceRequestError
+		if errors.As(err, &requestErr) {
+			jsonError(w, requestErr.message, requestErr.status)
+		} else {
+			jsonError(w, "jadwal pelajaran tidak dapat divalidasi.", http.StatusBadRequest)
+		}
+		return
+	}
+
+	if strings.TrimSpace(in.Sesi) == "" {
+		jsonError(w, "user_id, attendance_date, dan sesi wajib diisi", http.StatusBadRequest)
 		return
 	}
 
@@ -222,11 +247,18 @@ func (h *AttendanceHandler) insertAttendance(ctx context.Context, in attendanceI
 
 	// Cek duplikat via constraint (user_id, attendance_date, sesi).
 	var existing string
-	err := h.db.QueryRow(ctx, `
-		SELECT id::text FROM attendance
-		WHERE user_id = $1 AND attendance_date = $2 AND sesi = $3
-		LIMIT 1
-	`, in.UserID, in.AttendanceDate, in.Sesi).Scan(&existing)
+	var err error
+	if in.JadwalPelajaranID != nil && strings.TrimSpace(*in.JadwalPelajaranID) != "" {
+		err = h.db.QueryRow(ctx,
+			"SELECT id::text FROM attendance WHERE user_id = $1 AND attendance_date = $2 AND (jadwal_pelajaran_id = $3 OR (jadwal_pelajaran_id IS NULL AND sesi = $4)) LIMIT 1",
+			in.UserID, in.AttendanceDate, *in.JadwalPelajaranID, in.Sesi,
+		).Scan(&existing)
+	} else {
+		err = h.db.QueryRow(ctx,
+			"SELECT id::text FROM attendance WHERE user_id = $1 AND attendance_date = $2 AND jadwal_pelajaran_id IS NULL AND sesi = $3 LIMIT 1",
+			in.UserID, in.AttendanceDate, in.Sesi,
+		).Scan(&existing)
+	}
 	if err == nil {
 		return nil, true, nil
 	}
@@ -238,20 +270,24 @@ func (h *AttendanceHandler) insertAttendance(ctx context.Context, in attendanceI
 	err = h.db.QueryRow(ctx, `
 		INSERT INTO attendance (
 			user_id, role, attendance_date, check_in_time, check_in_timestamp,
-			class_id, sesi, attended_session, status, source
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			class_id, jadwal_pelajaran_id, mata_pelajaran_id, sesi, attended_session, status, source
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING `+attendanceSelectCols+`
 	`,
 		in.UserID, in.Role, in.AttendanceDate, in.CheckInTime, in.CheckInTimestamp,
-		in.ClassID, in.Sesi, in.AttendedSession, in.Status, in.Source,
+		in.ClassID, in.JadwalPelajaranID, in.MataPelajaranID,
+		in.Sesi, in.AttendedSession, in.Status, in.Source,
 	).Scan(
 		&a.ID, &a.UserID, &a.Role, &a.AttendanceDate,
 		&a.CheckInTime, &a.CheckInTimestamp, &a.ClassID,
+		&a.JadwalPelajaranID, &a.MataPelajaranID,
 		&a.Sesi, &a.AttendedSession, &a.Status, &a.Source, &a.CreatedAt,
 	)
 	if err != nil {
 		// Tangani race pada unique constraint.
-		if strings.Contains(err.Error(), "attendance_user_date_sesi_unique") {
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") ||
+			strings.Contains(err.Error(), "attendance_legacy_user_date_sesi_unique") ||
+			strings.Contains(err.Error(), "attendance_guru_schedule_unique") {
 			return nil, true, nil
 		}
 		return nil, false, err
@@ -260,6 +296,13 @@ func (h *AttendanceHandler) insertAttendance(ctx context.Context, in attendanceI
 }
 
 func (h *AttendanceHandler) Update(w http.ResponseWriter, r *http.Request) {
+	// Correcting a recorded check-in is a back-office act. Without this the route
+	// was open to every authenticated user, so a santri could rewrite any row.
+	if !middleware.CanManage(middleware.RoleFromCtx(r.Context())) {
+		jsonError(w, "koreksi absensi hanya dapat dilakukan admin atau tata usaha", http.StatusForbidden)
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		jsonError(w, "id wajib diisi", http.StatusBadRequest)
@@ -324,6 +367,7 @@ func (h *AttendanceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	err := h.db.QueryRow(r.Context(), query, args...).Scan(
 		&a.ID, &a.UserID, &a.Role, &a.AttendanceDate,
 		&a.CheckInTime, &a.CheckInTimestamp, &a.ClassID,
+		&a.JadwalPelajaranID, &a.MataPelajaranID,
 		&a.Sesi, &a.AttendedSession, &a.Status, &a.Source, &a.CreatedAt,
 	)
 	if err != nil {
@@ -346,6 +390,13 @@ func (h *AttendanceHandler) Update(w http.ResponseWriter, r *http.Request) {
 // attendance_correction_reason_required mewajibkan alasan non-blank ketika
 // corrected_by terisi, jadi ada default bila klien tidak mengirimnya.
 func (h *AttendanceHandler) MarkAbsent(w http.ResponseWriter, r *http.Request) {
+	// Same rule as Update: guru used to hold this and could overturn a recorded
+	// check-in from their own dashboard.
+	if !middleware.CanManage(middleware.RoleFromCtx(r.Context())) {
+		jsonError(w, "koreksi absensi hanya dapat dilakukan admin atau tata usaha", http.StatusForbidden)
+		return
+	}
+
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		jsonError(w, "id wajib diisi", http.StatusBadRequest)
@@ -385,6 +436,7 @@ func (h *AttendanceHandler) MarkAbsent(w http.ResponseWriter, r *http.Request) {
 	).Scan(
 		&a.ID, &a.UserID, &a.Role, &a.AttendanceDate,
 		&a.CheckInTime, &a.CheckInTimestamp, &a.ClassID,
+		&a.JadwalPelajaranID, &a.MataPelajaranID,
 		&a.Sesi, &a.AttendedSession, &a.Status, &a.Source, &a.CreatedAt,
 	)
 	if err != nil {
@@ -447,6 +499,26 @@ func (h *AttendanceHandler) List(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("date_to"); v != "" {
 		where = append(where, "attendance_date <= $"+strconv.Itoa(idx))
 		args = append(args, v)
+		idx++
+	}
+
+	// Scope by caller. Back-office roles see everything; anyone else is pinned to
+	// their own rows, so a guru cannot read another guru's recap by passing an
+	// arbitrary user_id. Guru still needs santri rows for their class roster, so
+	// only guru-role rows are restricted for them.
+	ctxUser := middleware.UserIDFromCtx(r.Context())
+	ctxRole := middleware.RoleFromCtx(r.Context())
+	if !middleware.CanManage(ctxRole) {
+		if ctxUser == "" {
+			jsonError(w, "sesi tidak valid", http.StatusUnauthorized)
+			return
+		}
+		if ctxRole == "guru" {
+			where = append(where, "(user_id = $"+strconv.Itoa(idx)+" OR role <> 'guru')")
+		} else {
+			where = append(where, "user_id = $"+strconv.Itoa(idx))
+		}
+		args = append(args, ctxUser)
 		idx++
 	}
 
@@ -1168,6 +1240,7 @@ func (h *AttendanceHandler) SantriStats(w http.ResponseWriter, r *http.Request) 
 	query := `SELECT
 		a.id::text, a.user_id::text, a.role, a.attendance_date::text,
 		a.check_in_time::text, a.check_in_timestamp::text, a.class_id::text,
+		a.jadwal_pelajaran_id::text, a.mata_pelajaran_id::text,
 		a.sesi, a.attended_session, a.status, a.source, a.created_at::text
 	FROM attendance a
 	WHERE ` + strings.Join(where, " AND ") + `

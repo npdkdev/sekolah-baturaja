@@ -1,10 +1,9 @@
 # HANDOFF — Status Migrasi SDN Baturaja
 
-**Diperbarui:** 2026-08-09 · **Branch:** `feat/sederhanakan-tab-konten` · **HEAD:** `6a87a5d`
+**Diperbarui:** 2026-08-15 · **Branch:** `feat/vercel-ready`
 
-HEAD saat ini berada di `6a87a5d`, dua belas commit di atas `origin/feat/sederhanakan-tab-konten`
-(`60a0fd7`). Branch ini belum di-merge ke `master`; `master` tetap berada di commit `8c80e39`
-pada checkout lokal.
+Pekerjaan berjalan di `feat/vercel-ready`, dengan dua remote: `origin` (aldokeita) dan
+`upstream` (npdkdev). Branch ini belum di-merge ke `master`.
 
 Baca file ini lebih dulu sebelum melanjutkan pekerjaan. `git log` menjelaskan *apa* yang berubah;
 file ini menjelaskan *kenapa*, apa yang sudah terbukti jalan, dan apa yang masih berisiko.
@@ -1221,6 +1220,360 @@ teks yang bisa berubah akan memecah satu jalur menjadi dua.
 Akibat wajar yang bukan kerusakan: pendaftaran hasil impor punya `jalur_label`
 ("Zonasi") tapi `jalur` kosong, jadi tidak terhitung ke kuota jalur mana pun. Nama
 jalur lama memang tidak punya padanan id yang sah.
+
+---
+
+## Dashboard Guru — rangkaian fitur bertahap
+
+Enam fitur diminta berurutan; tiap fitur diselesaikan, diuji, dan di-commit sendiri
+sebelum lanjut. Bagian ini mencatat yang sudah tuntas.
+
+### 1. Absensi terpusat, dashboard guru baca saja — **Tuntas**
+
+Aturannya: **satu pintu**. Semua absensi dicatat lewat halaman Absensi Digital dengan
+kartu RFID. Dashboard guru hanya menampilkan, tidak pernah menulis. Koreksi absensi
+adalah wewenang admin lewat panel rekap. Tidak ada tabel, endpoint, atau alur absensi
+baru yang dibuat.
+
+**Yang ditemukan rusak sebelum perbaikan.** Empat celah, semuanya di jalur absensi:
+
+| Endpoint | Sebelum | Akibat |
+|---|---|---|
+| `PUT /api/attendance/{id}` | tanpa otorisasi sama sekali | **siapa pun yang login, termasuk santri, bisa mengubah baris absensi mana pun** |
+| `PUT /api/attendance/{id}/absent` | `RequireRole("admin","guru","tata_usaha")` | guru bisa membatalkan kehadiran yang sudah tercatat |
+| `GET /api/attendance` | tanpa scoping | guru bisa membuka rekap guru lain cukup dengan mengganti `user_id` |
+| `AttendanceDetailsModal` | `role === 'guru' || isAdminRole(role)` | tombol koreksi muncul untuk guru |
+
+**Yang dikerjakan.**
+
+- `Update` dan `MarkAbsent` dijaga `middleware.CanManage` **di dalam handler**, bukan di
+  router, supaya `superadmin` ikut tercakup — `RequireRole` di rute lama tidak
+  menyebutkan `superadmin`.
+- `List` disaring berdasarkan akun pemanggil. Guru mendapat
+  `(user_id = $n OR role <> 'guru')`: baris absensi guru hanya miliknya sendiri, tapi
+  baris santri tetap terbaca karena daftar kelasnya membutuhkannya. Peran non-staf lain
+  dikunci ke `user_id` sendiri.
+- `Create` **sengaja dibiarkan terbuka** untuk peran operasional. Kios `/absensi-digital`
+  berjalan di bawah akun staf mana pun yang membukanya (`operationalDisplayRoles` di
+  `App.jsx` memuat `guru` dan `pentashih`), jadi mengunci `Create` akan mematikan absensi
+  pusat — hal yang justru dilarang.
+- `AttendanceDetailsModal` memakai `canManageRole`, cerminan `CanManage` di sisi Go.
+- Komponen baru `src/components/dashboard/shared/AbsensiSaya.jsx`: status hari ini, jam
+  check-in, sesi, rekap bulan berjalan, dan tujuh riwayat terakhir. Murni baca.
+
+**Beda "belum absen" dan "hari libur".** Panel membaca `fetchCalendarContext` dan
+memisahkan keduanya. Tanpa itu hari Minggu akan terbaca sebagai absensi yang terlewat.
+Hitungan "Tidak Hadir" memakai `getActiveCalendarDates` sampai **hari ini saja**, bukan
+seluruh bulan — sisa bulan belum terjadi.
+
+**Bukti uji.** Diuji dengan panggilan API sungguhan memakai akun guru sementara yang
+dibuat lewat API admin lalu dihapus beserta baris absensinya:
+
+| Uji | Hasil |
+|---|---|
+| guru `PUT /attendance/{id}` | 403 |
+| guru `PUT /attendance/{id}/absent` | 403 |
+| admin `PUT /attendance/{id}` | 200 |
+| admin `PUT /attendance/{id}/absent` | 200 |
+| guru minta `user_id` guru lain | 0 baris |
+| guru minta semua baris `role=guru` | hanya dirinya |
+| admin minta semua baris `role=guru` | 3 guru terlihat |
+| guru baca absensi santri | tetap bisa, tanpa regresi |
+
+**Belum diverifikasi:** tampilan panel di browser. Verifikasi itu butuh login dengan akun
+guru, dan agen tidak dapat mengisi field password.
+
+### 2. Modul nilai asesmen mata pelajaran — **Tuntas**
+
+Tabel baru `nilai` (migrasi `20260815000100_nilai_asesmen.sql`, **sudah diterapkan** ke
+Postgres lokal dan diperiksa dengan `\d nilai`).
+
+**Kepemilikan bersandar pada `jadwal_pelajaran`, tidak disalin.** Itu keputusan
+rancangan yang menentukan seluruh modul: `jadwal_pelajaran` adalah satu-satunya sumber
+yang menyatakan guru mana mengajar mata pelajaran apa di kelas mana pada periode berapa.
+Kalau kombinasi itu disalin ke tabel `nilai`, dua sumber kebenaran akan berselisih begitu
+admin memindahkan jadwal — guru yang sudah dicabut tetap memegang nilainya. Karena itu
+`nilai.go` selalu bertanya ulang lewat `guruMengajar()`.
+
+**Aturan hak akses.**
+
+| Peran | Baca | Tulis |
+|---|---|---|
+| admin, tata usaha, superadmin | semua | semua, termasuk memindahkan nilai antar kelas/mapel |
+| guru | hanya kombinasi yang diampunya | hanya kombinasi yang diampunya |
+| murid | hanya nilainya sendiri | tidak sama sekali |
+| peran lain | dikunci ke `santri_id` sendiri | tidak sama sekali |
+
+Peran yang tidak dikenali jatuh ke cakupan **paling sempit**, bukan paling longgar.
+
+Dua penjagaan tambahan yang mudah terlewat:
+
+- **Memindahkan nilai** ke kelas atau mata pelajaran lain berarti memindahkan
+  kepemilikannya, jadi hanya back-office yang boleh. Tanpa ini guru bisa melempar nilai ke
+  kelas yang tidak diampunya lalu kehilangan jejaknya.
+- **Hak diperiksa terhadap baris yang ADA**, bukan terhadap kiriman klien. Kalau yang
+  diperiksa kiriman, guru cukup mengirim `class_id` miliknya untuk menyunting nilai kelas
+  lain.
+- **Keanggotaan kelas divalidasi** saat menyimpan: murid harus benar-benar terdaftar di
+  kelas itu (`class_memberships.status = 'active'` atau `santri.current_class_id`), supaya
+  nilai tidak nyasar ke murid kelas lain hanya karena id-nya diketahui.
+
+**Berkas.** `backend/internal/handler/nilai.go`, terdaftar di `main.go` sebagai
+`/api/nilai`; `src/lib/nilaiAdapters.js`; `src/components/dashboard/shared/ModulNilai.jsx`.
+Dropdown kelas dan mata pelajaran diturunkan dari jadwal guru — penyaringan itu hanya
+kenyamanan, penjagaannya tetap di Go.
+
+**Bukti uji.** Panggilan API sungguhan dengan guru uji yang dibuat lewat API admin, diberi
+satu jadwal (Pendidikan Pancasila / Kelas Demo A), lalu dihapus beserta seluruh barisnya:
+
+| Uji | Hasil |
+|---|---|
+| guru simpan nilai mapel yang diampu | 201 |
+| guru simpan nilai mapel yang **tidak** diampu | 403 |
+| guru simpan nilai untuk kelas lain | 403 |
+| skor 150 | 400 |
+| murid bukan anggota kelas | 400 |
+| jenis asesmen kosong | 400 |
+| guru `LIST` | 1 baris, hanya mapel ampuannya |
+| admin `LIST` | 2 baris, kedua mapel |
+| guru ubah nilainya sendiri | 200 |
+| guru ubah nilai bukan ampuannya | 403 |
+| guru hapus nilai bukan ampuannya | 403 |
+| guru pindahkan nilai ke kelas lain | 403 |
+| guru hapus nilainya sendiri | 200 |
+| ringkasan (`/summary`) | jumlah, rata-rata, min, maks benar |
+
+**Catatan kebersihan data.** Saat menyiapkan uji, `jadwal_pelajaran`
+`d212e593-b36e-414a-8163-6c0f0179d79a` (Pendidikan Pancasila / Kelas Demo A) sempat
+ditugaskan ke guru uji. Nilai `guru_id` aslinya **tidak tercatat di repositori** — tidak
+ada seed jadwal di `supabase/migrations/` maupun `backend/init/` — jadi setelah uji kolom
+itu dikembalikan ke `NULL` (belum ditugaskan), bukan ke nilai semula. Hanya berdampak pada
+basis data pengembangan lokal.
+
+**Belum diverifikasi:** tampilan panel di browser, karena alasan yang sama seperti fitur 1.
+
+### Tata letak dashboard guru — subtab, dan panel absensi dinonaktifkan
+
+Permintaan pemilik: **tabel data murid harus yang pertama terlihat.** Sebelumnya tiga panel
+(jadwal, absensi, nilai) menumpuk di atas tabel dan mendorongnya jauh ke bawah.
+
+- **Jadwal Mengajar** dan **Nilai Asesmen** dipindah ke `Tabs`, ditaruh **di bawah** tabel
+  kelas. Isinya tidak berubah, hanya letak dan pembungkusnya.
+- **Panel `AbsensiSaya` dinonaktifkan** — komponennya masih ada di
+  `src/components/dashboard/shared/AbsensiSaya.jsx` dan tidak dihapus, hanya tidak lagi
+  dirender di `GuruDashboard`. Mengaktifkannya kembali cukup dengan mengimpor dan
+  memasangnya lagi sebagai subtab ketiga.
+
+**Penting — yang TIDAK ikut dinonaktifkan:** seluruh penjagaan backend dari fitur 1 tetap
+berlaku. `Update` dan `MarkAbsent` tetap dijaga `CanManage`, `List` tetap disaring per akun,
+dan `AttendanceDetailsModal` tetap memakai `canManageRole`. Itu perbaikan keamanan, bukan
+fitur tampilan, jadi mematikannya akan membuka kembali lubang yang memungkinkan santri
+mengubah baris absensi mana pun.
+
+Tombol **Absensi** di kartu profil guru (membuka `GuruAttendanceRecap` mode baca) sudah ada
+sejak sebelum rangkaian ini dan tetap dibiarkan.
+
+### 3. Materi, tugas, dan pengumuman kelas — **Tuntas**
+
+Tabel baru `kelas_konten` (migrasi `20260815000200_kelas_konten.sql`, **sudah diterapkan**
+dan diperiksa dengan `\d kelas_konten`). Subtab ketiga: **Materi & Tugas**.
+
+**Kenapa tidak menumpang `announcements`.** Tabel itu memasok situs publik dan punya
+kebijakan baca anonim `announcements_anon_select_published`. Konten kelas yang dititipkan ke
+sana akan **bocor ke halaman Berita** begitu statusnya terbit. Audiensnya berbeda, jadi
+tabelnya berbeda. `kelas_konten` sengaja **tidak punya kebijakan untuk peran `anon`** sama
+sekali.
+
+**Tiga jenis dalam satu tabel:** `materi`, `tugas`, `pengumuman`, dijaga CHECK. Batas
+pengumpulan dijaga CHECK terpisah supaya hanya bisa menempel pada `tugas` — aturan yang sama
+diuji lebih awal di Go agar pesannya jelas, dan di UI agar fieldnya tidak muncul sama sekali.
+
+**Aturan hak akses.**
+
+| Peran | Baca | Tulis |
+|---|---|---|
+| admin, tata usaha, superadmin | semua | semua, termasuk memindahkan antar kelas |
+| guru | kelas yang diajarnya, **termasuk drafnya** | kelas yang diajarnya |
+| murid | **hanya yang terbit, hanya kelasnya** | tidak sama sekali |
+| tanpa sesi sah | ditolak 401 | ditolak |
+
+Pengumuman kelas boleh **tanpa mata pelajaran**. Karena itu `guruPegangKelas()` punya dua
+tingkat: bila kontennya menyebut mata pelajaran, guru harus mengampu mata pelajaran itu di
+kelas tersebut; bila tidak, cukup mengampu apa pun di kelas itu.
+
+**Lampiran adalah TAUTAN, bukan unggahan.** `authorizeFileWrite` di `file.go` mengunci
+bucket `documents` pada tingkat `CanManage`, jadi guru tidak dapat mengunggah berkas. Bucket
+itu memang dirancang untuk arsip dokumen resmi. Permintaan pemilik berbunyi "lampiran **jika**
+storage yang ada mendukungnya" — untuk guru, tidak mendukung. Melonggarkan gate itu berarti
+mengubah keamanan berkas di luar lingkup modul ini, jadi tidak dilakukan. Kolomnya
+`lampiran_url` + `lampiran_nama`, diisi dengan menempel tautan. **Bila unggahan berkas oleh
+guru memang diinginkan, itu keputusan tersendiri** dan perlu perubahan sadar pada
+`authorizeFileWrite`.
+
+**Menerbitkan menstempel tanggal.** `status = 'published'` tanpa `tanggal_publikasi` akan
+diisi `now()`, baik saat membuat maupun saat menerbitkan draf lama (`COALESCE`, jadi tanggal
+terbit pertama tidak tertimpa). Tanpa ini konten terbit tidak akan pernah naik ke urutan
+teratas milik murid. Urutan memakai `COALESCE(tanggal_publikasi, created_at)` supaya draf
+baru tidak tenggelam di daftar guru.
+
+**Berkas.** `backend/internal/handler/kelaskonten.go` (`/api/kelas-konten`);
+`src/lib/kelasKontenAdapters.js`; `src/components/dashboard/shared/ModulKontenKelas.jsx`.
+
+**Bukti uji.** Guru uji dengan satu jadwal di Kelas Demo A; murid sungguhan (Kelas Purnama)
+dipakai untuk menguji lingkup baca. Semua dihapus setelahnya:
+
+| Uji | Hasil |
+|---|---|
+| guru buat materi di kelas yang diajar | 201 |
+| guru buat tugas + batas pengumpulan | 201, terbit tersetempel otomatis |
+| guru buat pengumuman kelas tanpa mata pelajaran | 201 |
+| guru buat konten untuk kelas lain | 403 |
+| guru pakai mata pelajaran yang tidak diampu | 403 |
+| batas pengumpulan pada `materi` | 400 |
+| jenis di luar tiga nilai sah | 400 |
+| judul kosong | 400 |
+| **murid `LIST`** | **1 baris — hanya terbit, hanya kelasnya; draf di kelasnya sendiri tidak terlihat** |
+| guru `LIST` | 3 baris, hanya kelasnya, termasuk drafnya |
+| admin `LIST` | 5 baris |
+| guru terbitkan drafnya | 200, tanggal tersetempel |
+| guru sembunyikan lagi | 200, kembali draf |
+| guru ubah konten kelas lain | 403 |
+| guru hapus konten kelas lain | 403 |
+| status di luar tiga nilai sah | 400 |
+| guru pindahkan ke kelas lain | 403 |
+| guru hapus kontennya sendiri | 200 |
+
+**Catatan kebersihan data.** Sama seperti fitur 2, jadwal `d212e593` sempat ditugaskan ke
+guru uji lalu dikembalikan ke `NULL`.
+
+**Belum diverifikasi:** tampilan di browser, karena alasan yang sama seperti fitur 1 dan 2.
+
+### 4. Komunikasi guru dengan wali murid — **Tuntas**
+
+Subtab keempat: **Komunikasi Wali**. **Tidak ada tabel baru** — kontak wali sudah tersimpan
+di `santri.no_hp_ortu`, `nama_ayah`, `nama_ibu`.
+
+**Tidak ada integrasi luar dan tidak ada kredensial.** Yang dibuat hanya tautan `wa.me`
+berisi pesan yang sudah terisi, dibuka di peramban guru. **Pesannya belum terkirim** saat
+tautan dibuka — guru masih membaca dan menekan kirim sendiri di WhatsApp. Persis seperti
+mengetik nomor di aplikasi WhatsApp sendiri, hanya lebih cepat.
+
+**Kenapa endpoint sendiri, bukan `/api/santri`.** Dua alasan:
+
+1. Cakupan guru di `santri.List` bersandar pada `classes.id_guru` — **wali kelas saja**. Guru
+   mata pelajaran yang mengajar lewat `jadwal_pelajaran` tidak termasuk, padahal ia juga
+   perlu menghubungi wali muridnya. Melebarkan cakupan di sana akan mengubah perilaku Data
+   Murid yang tidak berkaitan dengan permintaan ini.
+2. Kontak wali adalah data pribadi. `/api/kontak-wali` hanya mengembalikan kolom yang
+   benar-benar dipakai untuk menghubungi — bukan seluruh baris murid.
+
+**Cakupan `/api/kontak-wali`.**
+
+| Peran | Hasil |
+|---|---|
+| admin, tata usaha, superadmin | semua murid aktif |
+| guru | murid di kelas yang dipegangnya — sebagai **wali kelas** (`classes.id_guru`) **atau** lewat **jadwal mengajar** (`jadwal_pelajaran.guru_id`) |
+| murid | **403** |
+| peran lain | 403 |
+
+Murid nonaktif tidak masuk daftar: wali mereka bukan lagi tanggung jawab guru kelas berjalan.
+
+**Normalisasi nomor.** `normalizeNomorWa` mengubah `08xx`, `+62 8xx`, dan `8xx` menjadi
+`628xx`, lalu menolak apa pun yang panjangnya di luar 10–15 digit. Nomor yang tidak lolos
+membuat tombolnya nonaktif dan murid itu dihitung di peringatan "belum punya nomor wali",
+alih-alih membuka tautan yang pasti gagal. **Tidak ada nomor yang ditanam di kode.**
+
+**Lima template** (perkenalan, konfirmasi ketidakhadiran, pengingat tugas, apresiasi,
+undangan pertemuan) dengan placeholder `{wali} {murid} {kelas} {guru} {sekolah}`. Disimpan
+sebagai teks biasa di adapter, bukan tabel tersendiri — guru selalu dapat menyunting isinya
+sebelum mengirim, jadi menyimpannya di basis data hanya menambah beban tanpa menambah
+kegunaan. Nama sekolah diambil dari `useSchoolIdentity`, bukan ditulis mati.
+
+**Berkas.** `backend/internal/handler/kontakwali.go` (`/api/kontak-wali`);
+`src/lib/kontakWaliAdapters.js`; `src/components/dashboard/shared/ModulKomunikasiWali.jsx`.
+
+**Bukti uji.** Guru uji diberi satu jadwal di Kelas Purnama (kelas yang punya murid aktif),
+lalu jadwal dan akunnya dihapus:
+
+| Uji | Hasil |
+|---|---|
+| guru yang mengajar Kelas Purnama | 2 baris, hanya Kelas Purnama, nomor wali terbaca |
+| admin | 11 baris, lima kelas |
+| **murid membuka kontak wali** | **403** |
+| guru meminta `class_id` kelas lain secara eksplisit | 0 baris |
+
+**Belum diverifikasi:** tampilan di browser dan perilaku tautan `wa.me` sungguhan, karena
+alasan yang sama seperti fitur sebelumnya.
+
+### 5. Input dan pengelolaan setoran murojaah — **Tuntas**
+
+Panel "Pusat Muroja'ah Kelas" sudah ada di dashboard guru dan **UI-nya sudah lengkap sejak
+dulu** — form pilih murid, kategori, item hafalan, umpan balik, semuanya terpasang. Yang
+tidak ada adalah isinya: dua fungsinya hanya menampilkan toast penolakan.
+
+```js
+// handleManualMurojaahInsert — sebelum
+setIsSubmittingManual(true);
+setIsSubmittingManual(false);
+toast({ title: "Belum tersedia", ... });
+
+// confirmDeleteSubmission — sebelum
+onConfirm: async () => { toast({ title: "Aksi tidak tersedia", ... }); }
+```
+
+**Tiga lubang backend yang ditemukan saat mengaktifkannya.**
+
+| Endpoint | Sebelum | Akibat |
+|---|---|---|
+| `POST /api/academic/murojah` | tanpa pemeriksaan kelas | guru dapat mencatatkan penilaian pada **murid mana pun** cukup dengan mengetahui id-nya |
+| `PUT /api/academic/murojah/{id}` | `RequireRole("admin","guru")` saja | guru mana pun dapat menilai — bahkan menimpa — setoran murid kelas lain; tata usaha & superadmin justru tertutup |
+| `DELETE` | **tidak ada** | tidak ada jalan menghapus sama sekali |
+
+Semuanya kini melewati `pastikanBolehMurojah`, yang bertanya pada `guruPegangSantri`: guru
+berhak bila menjadi **wali kelas** murid itu (`classes.id_guru`) **atau** mengajar di
+kelasnya (`jadwal_pelajaran`). Keanggotaan kelas ikut diperiksa supaya roster dan
+`current_class_id` yang sempat berbeda tidak membuat guru kehilangan muridnya sendiri.
+Penjagaan ditaruh **di dalam handler**, bukan daftar peran di router — daftar peran tidak
+dapat memeriksa apakah muridnya memang murid guru tersebut.
+
+**Pencatatan perubahan: tabel `murojaah_audit`** (migrasi `20260815000300_murojaah_audit.sql`,
+**sudah diterapkan**). Mencatat `buat`, `ubah`, `hapus` beserta aktor, perannya, dan
+perpindahan statusnya.
+
+Dua keputusan rancangan yang penting:
+
+- **Tanpa foreign key ke `murojaah_submissions`.** FK dengan `ON DELETE CASCADE` justru akan
+  ikut menghapus bukti penghapusannya. Catatan hapus harus tetap hidup setelah baris aslinya
+  lenyap.
+- **Menyimpan `data_lama` (jsonb) berisi salinan penuh baris** sebelum dihapus. Itu
+  satu-satunya cara memulihkan setoran yang terhapus keliru. Terbukti pada uji: setelah
+  penghapusan, isi `Al-Fatihah` masih terbaca di `data_lama->>'content'`.
+
+Kegagalan menulis audit **tidak** membatalkan aksi utama — setoran yang sudah tersimpan tidak
+boleh dianggap gagal hanya karena catatannya meleset — tetapi tetap masuk log server.
+
+**Status `perlu_perbaikan` akhirnya bisa dicapai.** Basis data dan backend sudah lama
+menerimanya, tetapi layar penilaian menulis mati `status: 'diterima'`, jadi tidak ada jalan
+menandai setoran perlu diulang. Sekarang ada dua tombol: **Terima Setoran** dan **Perlu
+Perbaikan**. Setoran yang dicatat guru secara tatap muka langsung berstatus `diterima` —
+sudah dinilai di tempat, bukan masuk antrean `menunggu` seperti pengajuan murid.
+
+**Bukti uji.** Guru uji dengan jadwal di Kelas Purnama; murid dalam dan luar kelas itu:
+
+| Uji | Hasil |
+|---|---|
+| guru catat setoran murid kelasnya | 201 |
+| guru catat setoran murid **kelas lain** | 403 |
+| status di luar empat nilai sah | 400 |
+| isi setoran kosong | 400 |
+| guru nilai setoran muridnya | 200 |
+| guru nilai setoran murid kelas lain | 403 |
+| guru hapus setoran murid kelas lain | 403 |
+| guru hapus setoran muridnya | 200 |
+| hapus id tak dikenal | 404 |
+| isi `murojaah_audit` | 4 baris: buat/buat/ubah/hapus, dengan perpindahan status dan salinan penuh pada penghapusan |
+
+**Belum diverifikasi:** tampilan di browser, karena alasan yang sama seperti fitur sebelumnya.
 
 Bila daya tampung nol, panel menampilkan ajakan mengisi kapasitas alih-alih tabel
 berisi nol — dan tidak ada pembagian dengan nol.

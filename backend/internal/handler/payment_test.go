@@ -122,14 +122,31 @@ func TestCashflowDateRangeUsesExclusiveNextBoundary(t *testing.T) {
 	}
 }
 
+func TestCashflowCustomDateRange(t *testing.T) {
+	start, end, err := cashflowCustomDateRange("2028-02-29", "2028-03-01")
+	if err != nil || start != "2028-02-29" || end != "2028-03-02" {
+		t.Fatalf("cashflowCustomDateRange() = %q, %q, %v; want inclusive range with exclusive next day", start, end, err)
+	}
+
+	if _, _, err := cashflowCustomDateRange("2028-03-02", "2028-03-01"); err == nil {
+		t.Fatal("reversed custom date range should be rejected")
+	}
+}
+
 func TestNormalizeExpenseInput(t *testing.T) {
 	kategori := "  Operasional  "
 	deskripsi := "  Bayar listrik  "
+	metode := "  Transfer  "
+	catatan := "  Tagihan listrik bulan berjalan  "
+	bukti := " /files/website-assets/expenses/listrik.pdf "
 	got, err := normalizeExpenseInput(expenseInput{
 		TanggalPengeluaran: "2026-08-09",
 		Kategori:           &kategori,
 		Deskripsi:          &deskripsi,
 		Jumlah:             125000.125,
+		MetodePembayaran:   &metode,
+		Catatan:            &catatan,
+		BuktiURL:           &bukti,
 	})
 	if err != nil {
 		t.Fatalf("normalizeExpenseInput returned error: %v", err)
@@ -137,8 +154,46 @@ func TestNormalizeExpenseInput(t *testing.T) {
 	if got.TanggalPengeluaran != "2026-08-09" || *got.Kategori != "Operasional" || *got.Deskripsi != "Bayar listrik" || got.Jumlah != 125000.13 {
 		t.Fatalf("normalized expense = %#v; want trimmed fields and rounded amount", got)
 	}
+	if got.MetodePembayaran == nil || *got.MetodePembayaran != "Transfer" || got.Catatan == nil || *got.Catatan != "Tagihan listrik bulan berjalan" || got.BuktiURL == nil || *got.BuktiURL != "/files/website-assets/expenses/listrik.pdf" {
+		t.Fatalf("normalized detail fields = %#v; want trimmed optional values", got)
+	}
 
 	if _, err := normalizeExpenseInput(expenseInput{TanggalPengeluaran: "2026-02-31", Jumlah: 100}); err == nil {
 		t.Fatal("invalid calendar date should be rejected")
+	}
+	invalidProof := "proof.pdf"
+	if _, err := normalizeExpenseInput(expenseInput{
+		TanggalPengeluaran: "2026-08-09",
+		Kategori:           &kategori,
+		Deskripsi:          &deskripsi,
+		Jumlah:             100,
+		BuktiURL:           &invalidProof,
+	}); err == nil {
+		t.Fatal("proof value without URL or path should be rejected")
+	}
+}
+
+func TestExpenseUpdateMergePreservesUnchangedFields(t *testing.T) {
+	category := "Operasional"
+	description := "Bayar listrik"
+	method := "Transfer"
+	note := "Catatan lama"
+	proof := "/files/old-proof.pdf"
+	amount := 250000.0
+	current := expenseRecord{
+		TanggalPengeluaran: "2026-08-09",
+		Kategori:           &category,
+		Deskripsi:          &description,
+		Jumlah:             125000,
+		MetodePembayaran:   &method,
+		Catatan:            &note,
+		BuktiURL:           &proof,
+	}
+	merged := mergeExpenseUpdate(current, expenseUpdateInput{Jumlah: &amount})
+	if merged.TanggalPengeluaran != current.TanggalPengeluaran || merged.Kategori != current.Kategori || merged.Deskripsi != current.Deskripsi || merged.Jumlah != amount || merged.MetodePembayaran != current.MetodePembayaran || merged.Catatan != current.Catatan || merged.BuktiURL != current.BuktiURL {
+		t.Fatalf("merged expense = %#v; want only amount changed", merged)
+	}
+	if hasExpenseUpdateFields(expenseUpdateInput{}) {
+		t.Fatal("empty partial update should not be considered a mutation")
 	}
 }

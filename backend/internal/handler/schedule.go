@@ -275,19 +275,26 @@ func (h *ScheduleHandler) DeleteMapel(w http.ResponseWriter, r *http.Request) {
 // yang menjadi {"Microseconds":25200000000,"Valid":true} begitu di-JSON-kan -
 // bukan "07:00" yang dibutuhkan UI. to_char memaksanya jadi string.
 const jadwalSelect = `
-		SELECT j.id, j.periode_id, j.class_id, j.mata_pelajaran_id, j.guru_id,
+		SELECT j.id, j.periode_id, j.class_id, j.mata_pelajaran_id,
+		       COALESCE(j.guru_id, c.id_guru) AS guru_id,
 		       j.hari,
 		       to_char(j.jam_mulai,   'HH24:MI') AS jam_mulai,
 		       to_char(j.jam_selesai, 'HH24:MI') AS jam_selesai,
 		       j.ruang, j.catatan, j.created_at, j.updated_at,
 		       m.nama  AS mata_pelajaran_nama,
 		       m.kode  AS mata_pelajaran_kode,
+		       m.is_active AS mapel_is_active,
 		       c.nama_kelas,
+		       c.sesi,
+		       c.is_active AS class_is_active,
+		       p.nama AS periode_nama,
+		       p.is_active AS periode_is_active,
 		       g.nama  AS guru_nama
 		FROM jadwal_pelajaran j
 		JOIN mata_pelajaran m ON m.id = j.mata_pelajaran_id
+		JOIN periode_ajaran p ON p.id = j.periode_id
 		JOIN classes c        ON c.id = j.class_id
-		LEFT JOIN guru g      ON g.id = j.guru_id`
+		LEFT JOIN guru g      ON g.id = COALESCE(j.guru_id, c.id_guru)`
 
 // jadwalByID membaca ulang satu baris lewat jadwalSelect. Dipakai setelah insert
 // dan update supaya bentuk yang dikembalikan sama persis dengan yang dikembalikan
@@ -305,7 +312,7 @@ func (h *ScheduleHandler) ListJadwal(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(r.Context(), jadwalSelect+`
 		WHERE ($1 = '' OR j.periode_id = $1::uuid)
 		  AND ($2 = '' OR j.class_id   = $2::uuid)
-		  AND ($3 = '' OR j.guru_id    = $3::uuid)
+		  AND ($3 = '' OR COALESCE(j.guru_id, c.id_guru) = $3::uuid)
 		ORDER BY j.hari, j.jam_mulai, c.nama_kelas
 	`,
 		strings.TrimSpace(q.Get("periode_id")),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -45,7 +46,13 @@ func (h *AcademicHandler) Routes() chi.Router {
 	// Murojaah
 	r.Get("/murojah", h.ListMurojah)
 	r.Post("/murojah", h.SubmitMurojah) // santri submits their own
-	r.With(middleware.RequireRole("admin", "guru")).Put("/murojah/{id}", h.ReviewMurojah)
+	// Menilai dan menghapus setoran dijaga DI DALAM handler lewat
+	// pastikanBolehMurojah, bukan oleh daftar peran di sini. Daftar lama hanya
+	// memuat "admin" dan "guru" — tata usaha dan superadmin tertutup — dan yang
+	// lebih penting, daftar peran tidak dapat memeriksa apakah muridnya memang
+	// murid guru tersebut.
+	r.Put("/murojah/{id}", h.ReviewMurojah)
+	r.Delete("/murojah/{id}", h.DeleteMurojah)
 
 	// Jilid history
 	r.Get("/jilid-history", h.ListJilidHistoryBatch)
@@ -390,6 +397,87 @@ func (h *AcademicHandler) ListMurojah(w http.ResponseWriter, r *http.Request) {
 	jsonData(w, list)
 }
 
+// guruPegangSantri menjawab: apakah guru ini berhak atas murid tersebut?
+//
+// Dua jalur sah, sama seperti pada kontak wali: menjadi wali kelasnya
+// (`classes.id_guru`) atau mengajar di kelasnya menurut `jadwal_pelajaran`.
+// Keanggotaan kelas ikut diperiksa supaya roster dan `current_class_id` yang
+// sempat berbeda tidak membuat guru kehilangan muridnya sendiri.
+func (h *AcademicHandler) guruPegangSantri(ctx context.Context, guruID, santriID string) (bool, error) {
+	var ada bool
+	err := h.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM santri s
+			WHERE s.id = $2 AND (
+				s.current_class_id IN (SELECT id FROM classes WHERE id_guru = $1)
+				OR s.current_class_id IN (SELECT class_id FROM jadwal_pelajaran WHERE guru_id = $1)
+			)
+		) OR EXISTS (
+			SELECT 1 FROM class_memberships cm
+			WHERE cm.santri_id = $2 AND cm.status = 'active' AND (
+				cm.class_id IN (SELECT id FROM classes WHERE id_guru = $1)
+				OR cm.class_id IN (SELECT class_id FROM jadwal_pelajaran WHERE guru_id = $1)
+			)
+		)
+	`, guruID, santriID).Scan(&ada)
+	return ada, err
+}
+
+// catatAudit menuliskan satu baris riwayat. Kegagalannya TIDAK membatalkan aksi
+// utama — setoran yang sudah tersimpan tidak boleh dianggap gagal hanya karena
+// catatannya meleset — tetapi tetap dicatat ke log server agar tidak membisu.
+func (h *AcademicHandler) catatAudit(ctx context.Context, submissionID, aksi, aktorID, aktorRole, statusLama, statusBaru string, dataLama any) {
+	var aktor any
+	if aktorID != "" {
+		aktor = aktorID
+	}
+	var lama, baru any
+	if statusLama != "" {
+		lama = statusLama
+	}
+	if statusBaru != "" {
+		baru = statusBaru
+	}
+	if _, err := h.db.Exec(ctx, `
+		INSERT INTO murojaah_audit
+		  (submission_id, aksi, aktor_id, aktor_role, status_lama, status_baru, data_lama)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, submissionID, aksi, aktor, aktorRole, lama, baru, dataLama); err != nil {
+		log.Printf("catatAudit murojaah (%s %s): %v", aksi, submissionID, err)
+	}
+}
+
+// murojahBaris mengambil pemilik dan status sebuah setoran, plus salinan penuh
+// barisnya untuk disimpan ke audit sebelum diubah atau dihapus.
+func (h *AcademicHandler) murojahBaris(ctx context.Context, id string) (santriID, status string, snapshot []byte, err error) {
+	err = h.db.QueryRow(ctx, `
+		SELECT santri_id, status, to_jsonb(ms) FROM murojaah_submissions ms WHERE id = $1
+	`, id).Scan(&santriID, &status, &snapshot)
+	return
+}
+
+// pastikanBolehMurojah menjaga tulis pada satu setoran: back-office bebas, guru
+// hanya untuk muridnya sendiri, selain itu ditolak.
+func (h *AcademicHandler) pastikanBolehMurojah(ctx context.Context, santriID string) (string, int) {
+	role := middleware.RoleFromCtx(ctx)
+	user := middleware.UserIDFromCtx(ctx)
+
+	if middleware.CanManage(role) {
+		return "", 0
+	}
+	if role != "guru" || user == "" {
+		return "hanya guru pengampu, admin, atau tata usaha yang dapat mengelola setoran", http.StatusForbidden
+	}
+	boleh, err := h.guruPegangSantri(ctx, user, santriID)
+	if err != nil {
+		return "gagal memeriksa kelas murid", http.StatusInternalServerError
+	}
+	if !boleh {
+		return "murid ini bukan murid di kelas yang Anda pegang", http.StatusForbidden
+	}
+	return "", 0
+}
+
 func (h *AcademicHandler) SubmitMurojah(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	role := middleware.RoleFromCtx(ctx)
@@ -401,6 +489,8 @@ func (h *AcademicHandler) SubmitMurojah(w http.ResponseWriter, r *http.Request) 
 		Type          string  `json:"type"`
 		Content       string  `json:"content"`
 		RecordingPath *string `json:"recording_path"`
+		Status        string  `json:"status"`
+		Feedback      *string `json:"feedback"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "request tidak valid", http.StatusBadRequest)
@@ -419,19 +509,100 @@ func (h *AcademicHandler) SubmitMurojah(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Guru mencatatkan setoran atas nama murid — hanya boleh untuk murid di kelas
+	// yang dipegangnya. Tanpa ini seorang guru dapat mencatatkan penilaian pada
+	// murid mana pun cukup dengan mengetahui id-nya.
+	if role != "santri" {
+		if msg, code := h.pastikanBolehMurojah(ctx, body.SantriID); msg != "" {
+			jsonError(w, msg, code)
+			return
+		}
+	}
+
+	// Setoran yang dicatat guru sudah dinilai di tempat, jadi statusnya boleh
+	// langsung terisi. Murid selalu masuk sebagai 'menunggu'.
+	status := "menunggu"
+	if role != "santri" && body.Status != "" {
+		switch body.Status {
+		case "menunggu", "direview", "diterima", "perlu_perbaikan":
+			status = body.Status
+		default:
+			jsonError(w, "status murojaah tidak valid", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Guru yang mencatat sekaligus menjadi penilainya, kecuali klien menyebut lain.
+	target := body.TargetGuruID
+	if target == nil && role == "guru" && userID != "" {
+		target = &userID
+	}
+
+	var reviewedAt any
+	if status != "menunggu" {
+		reviewedAt = "now"
+	}
+
 	var id string
 	err := h.db.QueryRow(ctx, `
 		INSERT INTO murojaah_submissions
-		  (santri_id, target_guru_id, type, content, recording_path, status, submitted_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, 'menunggu', now(), $6)
+		  (santri_id, target_guru_id, type, content, recording_path, status, feedback,
+		   submitted_at, reviewed_at, created_by, updated_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now(),
+		        CASE WHEN $8::text = 'now' THEN now() ELSE NULL END, $9, $9)
 		RETURNING id
-	`, body.SantriID, body.TargetGuruID, body.Type, body.Content,
-		body.RecordingPath, userID).Scan(&id)
+	`, body.SantriID, target, body.Type, body.Content,
+		body.RecordingPath, status, body.Feedback, reviewedAt, userID).Scan(&id)
 	if err != nil {
 		jsonError(w, "gagal menyimpan murojaah: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	h.catatAudit(ctx, id, "buat", userID, role, "", status, nil)
+
 	w.WriteHeader(http.StatusCreated)
+	jsonData(w, map[string]any{"id": id})
+}
+
+// DELETE /api/academic/murojah/{id}
+func (h *AcademicHandler) DeleteMurojah(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		jsonError(w, "id wajib diisi", http.StatusBadRequest)
+		return
+	}
+
+	santriID, status, snapshot, err := h.murojahBaris(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "murojaah tidak ditemukan", http.StatusNotFound)
+			return
+		}
+		jsonError(w, "gagal membaca murojaah", http.StatusInternalServerError)
+		return
+	}
+	if msg, code := h.pastikanBolehMurojah(ctx, santriID); msg != "" {
+		jsonError(w, msg, code)
+		return
+	}
+
+	ct, err := h.db.Exec(ctx, "DELETE FROM murojaah_submissions WHERE id = $1", id)
+	if err != nil {
+		jsonError(w, "gagal menghapus murojaah", http.StatusInternalServerError)
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		jsonError(w, "murojaah tidak ditemukan", http.StatusNotFound)
+		return
+	}
+
+	// Dicatat SETELAH baris benar-benar hilang, dengan salinan penuhnya, supaya
+	// penghapusan tetap dapat ditelusuri dan dipulihkan bila keliru.
+	h.catatAudit(ctx, id, "hapus",
+		middleware.UserIDFromCtx(ctx), middleware.RoleFromCtx(ctx),
+		status, "", snapshot)
+
 	jsonData(w, map[string]any{"id": id})
 }
 
@@ -453,9 +624,27 @@ func (h *AcademicHandler) ReviewMurojah(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "status murojaah tidak valid", http.StatusBadRequest)
 		return
 	}
-	reviewer := middleware.UserIDFromCtx(r.Context())
+	ctx := r.Context()
+	reviewer := middleware.UserIDFromCtx(ctx)
 
-	ct, err := h.db.Exec(r.Context(), `
+	// Hak diperiksa terhadap murid pemilik baris, bukan terhadap kiriman klien.
+	// Sebelum ini rutenya hanya menuntut peran "guru", sehingga guru mana pun
+	// dapat menilai — bahkan menimpa — setoran murid kelas lain.
+	santriID, statusLama, _, err := h.murojahBaris(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			jsonError(w, "murojaah tidak ditemukan", http.StatusNotFound)
+			return
+		}
+		jsonError(w, "gagal membaca murojaah", http.StatusInternalServerError)
+		return
+	}
+	if msg, code := h.pastikanBolehMurojah(ctx, santriID); msg != "" {
+		jsonError(w, msg, code)
+		return
+	}
+
+	ct, err := h.db.Exec(ctx, `
 		UPDATE murojaah_submissions
 		SET status = $2, feedback = $3, target_guru_id = COALESCE(target_guru_id, $4),
 		    reviewed_at = now(), updated_by = $4
@@ -469,6 +658,9 @@ func (h *AcademicHandler) ReviewMurojah(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "murojaah tidak ditemukan", http.StatusNotFound)
 		return
 	}
+
+	h.catatAudit(ctx, id, "ubah", reviewer, middleware.RoleFromCtx(ctx), statusLama, body.Status, nil)
+
 	jsonData(w, map[string]any{"id": id, "status": body.Status})
 }
 

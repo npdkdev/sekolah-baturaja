@@ -420,7 +420,7 @@
   font-weight: 800;
   color: hsl(var(--admin-text-primary));
   line-height: 1.2;
-  font-family: 'Plus Jakarta Sans', 'Archivo', system-ui, sans-serif;
+  font-family: 'Montserrat', 'Poppins', system-ui, sans-serif;
 }
 
 @media (min-width: 768px) {
@@ -3930,7 +3930,7 @@ body.school-admin-context [cmdk-item][data-selected="true"] {
 }
 
 .attendance-profile-card--student .attendance-profile-card__quote p {
-  font-family: 'Plus Jakarta Sans', Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Montserrat', 'Poppins', system-ui, sans-serif;
   font-size: 0.84rem;
   font-style: italic;
   font-weight: 600;
@@ -6495,4 +6495,960 @@ body.school-admin-context [cmdk-item][data-selected="true"] {
     flex: none;
     white-space: nowrap;
   }
+}
+
+/* ============================================================================
+   PUBLIC NAV PARITY — dashboard top bar and module navigation
+   ========================================================================== */
+
+.dashboard-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  padding: 14px 28px;
+}
+
+.dashboard-topbar__shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  max-width: 1240px;
+  min-height: 68px;
+  margin: 0 auto;
+  padding: 12px 14px 12px 20px;
+  border: 1px solid rgb(255 255 255 / 0.75);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 0.55);
+  box-shadow:
+    0 20px 46px -20px rgb(55 65 120 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.95);
+  -webkit-backdrop-filter: blur(26px) saturate(185%);
+  backdrop-filter: blur(26px) saturate(185%);
+}
+
+.dashboard-topbar__brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+  color: #1b1c28;
+  text-decoration: none;
+}
+
+.dashboard-topbar__brand:hover {
+  color: #1b1c28;
+}
+
+.dashboard-topbar__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  background: linear-gradient(140deg, var(--sekolah-aksen), var(--sekolah-aksen-tengah-2) 45%, var(--sekolah-aksen-ujung));
+  box-shadow:
+    0 10px 22px -8px rgb(110 120 220 / 0.8),
+    inset 0 1px 0 rgb(255 255 255 / 0.85);
+}
+
+.dashboard-topbar__identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.dashboard-topbar__name {
+  overflow: hidden;
+  color: #1b1c28;
+  font-family: 'Montserrat', 'Poppins', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-topbar__role {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #6c718f;
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-topbar__context {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid rgb(255 255 255 / 0.95);
+  border-radius: 12px;
+  color: #4a4fd0;
+  background: rgb(255 255 255 / 0.72);
+  box-shadow:
+    0 10px 24px -12px rgb(60 70 120 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.95);
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dashboard-topbar__context-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sekolah-aksen-pekat);
+  box-shadow: 0 0 0 4px rgb(91 108 255 / 0.14);
+}
+
+.dashboard-public-nav {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.dashboard-public-nav__link {
+  display: inline-flex;
+  flex: none;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #2c2f45;
+  background: transparent;
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .25s ease, border-color .25s ease, color .25s ease, transform .3s cubic-bezier(.3, 1.3, .4, 1);
+}
+
+.dashboard-public-nav__link:hover {
+  border-color: rgb(255 255 255 / 0.7);
+  color: #4a58e0;
+  background: rgb(255 255 255 / 0.7);
+  transform: translateY(-1px);
+}
+
+.dashboard-public-nav__link.is-active {
+  border-color: rgb(255 255 255 / 0.95);
+  color: #4a4fd0;
+  background: rgb(255 255 255 / 0.72);
+  box-shadow:
+    0 10px 24px -12px rgb(60 70 120 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.95);
+  font-weight: 700;
+}
+
+.dashboard-topbar__spacer {
+  flex: 1;
+}
+
+.dashboard-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+}
+
+.dashboard-nav-button,
+.dashboard-nav-icon-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid rgb(255 255 255 / 0.9);
+  border-radius: 14px;
+  color: #33375a;
+  background: rgb(255 255 255 / 0.62);
+  box-shadow:
+    0 10px 24px -12px rgb(60 70 120 / 0.6),
+    inset 0 1px 0 rgb(255 255 255 / 0.95);
+  font-family: 'Poppins', system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background .25s ease, border-color .25s ease, color .25s ease, transform .3s cubic-bezier(.3, 1.3, .4, 1);
+}
+
+.dashboard-nav-button {
+  padding: 11px 17px;
+  cursor: pointer;
+}
+
+.dashboard-nav-icon-button {
+  width: 42px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dashboard-nav-button:hover,
+.dashboard-nav-icon-button:hover {
+  border-color: rgb(255 255 255 / 0.95);
+  color: #4a4fd0;
+  background: rgb(255 255 255 / 0.95);
+}
+
+.dashboard-nav-icon-button:hover {
+  transform: translateY(-2px);
+}
+
+.dashboard-nav-button--danger {
+  color: #b04a5a;
+}
+
+.dashboard-nav-button--danger:hover {
+  color: #a13f50;
+}
+
+/* Module navigation keeps the same public shell, rhythm, and touch affordance. */
+.sdnb-dash .admin-module-nav {
+  position: relative;
+  top: auto;
+  z-index: 30;
+  padding: 14px 0;
+  background: transparent;
+}
+
+.sdnb-dash .admin-module-nav > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 0.75) !important;
+  border-radius: 22px;
+  background: rgb(255 255 255 / 0.55) !important;
+  box-shadow:
+    0 20px 46px -20px rgb(55 65 120 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.95) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(185%);
+  backdrop-filter: blur(26px) saturate(185%);
+}
+
+.sdnb-dash .admin-nav-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 40px;
+  gap: 6px;
+  padding: 9px 14px;
+  border: 1px solid transparent !important;
+  border-radius: 12px;
+  color: #2c2f45;
+  background: transparent !important;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  transition: background .25s ease, border-color .25s ease, color .25s ease;
+}
+
+.sdnb-dash .admin-nav-pill:hover:not(.active) {
+  border-color: transparent !important;
+  color: #4a58e0 !important;
+  background: rgb(255 255 255 / 0.7) !important;
+  transform: none !important;
+}
+
+.sdnb-dash .admin-nav-pill.active {
+  border-color: transparent !important;
+  color: #4a4fd0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-weight: 600;
+}
+
+.sdnb-dash .admin-nav-pill-indicator {
+  border: 1px solid rgb(255 255 255 / 0.95) !important;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.72) !important;
+  box-shadow:
+    0 10px 24px -12px rgb(60 70 120 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.95) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+.sdnb-dash .admin-nav-group-label {
+  color: #8a8ea8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+
+.sdnb-dash .admin-nav-group-separator {
+  height: 24px;
+  margin: 0 4px;
+  background: rgb(120 132 200 / 0.22);
+}
+
+.dashboard-topbar :is(a, button):focus-visible,
+.sdnb-dash .admin-module-nav .admin-nav-pill:focus-visible {
+  outline: 2px solid var(--sekolah-aksen-pekat);
+  outline-offset: 3px;
+}
+
+html[data-theme="dark"] .dashboard-topbar__shell {
+  border-color: #3b3f68;
+  background: #1f2242;
+  box-shadow: 0 8px 20px rgb(10 12 30 / 0.3);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-theme="dark"] .dashboard-topbar__brand,
+html[data-theme="dark"] .dashboard-topbar__brand:hover {
+  color: #f4f5ff;
+}
+
+html[data-theme="dark"] .dashboard-topbar__mark {
+  background: #5b6cff;
+  box-shadow: 0 6px 14px rgb(10 12 30 / 0.3);
+}
+
+html[data-theme="dark"] .dashboard-topbar__name {
+  color: #f4f5ff;
+}
+
+html[data-theme="dark"] .dashboard-topbar__role {
+  color: #b6badb;
+}
+
+html[data-theme="dark"] .dashboard-topbar__context {
+  border-color: #596397;
+  color: #e9ecff;
+  background: #3d456c;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.2);
+}
+
+html[data-theme="dark"] .dashboard-topbar__context-dot {
+  background: #7c8aff;
+  box-shadow: 0 0 0 4px rgb(124 138 255 / 0.18);
+}
+
+html[data-theme="dark"] .dashboard-public-nav__link {
+  border-color: transparent;
+  color: #c1c4d5;
+  background: transparent;
+}
+
+html[data-theme="dark"] .dashboard-public-nav__link:hover {
+  border-color: #4b5070;
+  color: #f3f4fb;
+  background: #2b2d45;
+}
+
+html[data-theme="dark"] .dashboard-public-nav__link.is-active {
+  border-color: #596397;
+  color: #e9ecff;
+  background: #3d456c;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.2);
+}
+
+html[data-theme="dark"] .dashboard-nav-button,
+html[data-theme="dark"] .dashboard-nav-icon-button {
+  border-color: #3b3f68;
+  color: #eef0ff;
+  background: #25284a;
+  box-shadow: 0 2px 6px rgb(10 12 30 / 0.34);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-theme="dark"] .dashboard-nav-button:hover,
+html[data-theme="dark"] .dashboard-nav-icon-button:hover {
+  border-color: #4b5070;
+  color: #fff;
+  background: #2b2d45;
+}
+
+html[data-theme="dark"] .dashboard-nav-button--danger {
+  color: #fda4af;
+}
+
+html[data-theme="dark"] .sdnb-dash .admin-module-nav > div {
+  border-color: #3b3f68 !important;
+  background: #1f2242 !important;
+  box-shadow: 0 8px 20px rgb(10 12 30 / 0.3) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-theme="dark"] .sdnb-dash .admin-nav-pill {
+  border-color: transparent !important;
+  color: #c1c4d5 !important;
+  background: transparent !important;
+}
+
+html[data-theme="dark"] .sdnb-dash .admin-nav-pill:hover:not(.active) {
+  border-color: #4b5070 !important;
+  color: #f3f4fb !important;
+  background: #2b2d45 !important;
+}
+
+html[data-theme="dark"] .sdnb-dash .admin-nav-pill.active {
+  color: #e9ecff !important;
+}
+
+html[data-theme="dark"] .sdnb-dash .admin-nav-pill-indicator {
+  border-color: #596397 !important;
+  background: #3d456c !important;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.2) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-theme="dark"] .sdnb-dash .admin-nav-group-label {
+  color: #9499b2;
+}
+
+html[data-theme="dark"] .sdnb-dash .admin-nav-group-separator {
+  background: #3b3f68;
+}
+
+@media (max-width: 1120px) {
+  .dashboard-topbar__role { display: none; }
+}
+
+@media (max-width: 1040px) {
+  .dashboard-topbar__shell {
+    gap: 16px;
+    padding: 10px 12px 10px 14px;
+  }
+
+  .dashboard-topbar__context,
+  .dashboard-public-nav__link,
+  .sdnb-dash .admin-nav-pill {
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 940px) {
+  .dashboard-topbar {
+    padding: 10px 16px;
+  }
+
+  .dashboard-topbar__shell {
+    gap: 10px;
+    min-height: 62px;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-topbar__context {
+    display: none;
+  }
+  .dashboard-topbar__spacer {
+    display: none;
+  }
+
+  .dashboard-topbar__actions {
+    margin-left: auto;
+  }
+
+  .dashboard-public-nav {
+    order: 3;
+    flex: 1 0 100%;
+    width: 100%;
+    max-width: 100%;
+    margin-top: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .dashboard-public-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sdnb-dash .admin-module-nav {
+    padding: 10px 0;
+  }
+
+  .sdnb-dash .admin-module-nav > div {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .sdnb-dash .admin-module-nav > div::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sdnb-dash .admin-nav-group-label,
+  .sdnb-dash .admin-nav-group-separator {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-topbar {
+    padding: 8px 10px;
+  }
+
+  .dashboard-topbar__shell {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+  .dashboard-public-nav {
+    margin-top: 0;
+    padding: 2px 0;
+  }
+
+  .dashboard-topbar__mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    font-size: 12px;
+  }
+
+  .dashboard-topbar__brand {
+    gap: 9px;
+  }
+
+  .dashboard-topbar__name {
+    max-width: 120px;
+    font-size: 13.5px;
+  }
+
+  .dashboard-nav-button,
+  .dashboard-nav-icon-button {
+    min-height: 42px;
+  }
+
+  .dashboard-nav-button {
+    width: 42px;
+    padding: 0;
+  }
+
+  .dashboard-nav-button__label {
+    display: none;
+  }
+
+  .dashboard-topbar__actions {
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-nav-button,
+  .dashboard-nav-icon-button,
+  .dashboard-public-nav__link,
+  .sdnb-dash .admin-nav-pill {
+    transition: none;
+  }
+}
+.dashboard-public-nav {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: max-content;
+  transform: translate(-50%, -50%);
+}
+
+.dashboard-public-nav__link {
+  min-height: 0;
+  gap: 6px;
+  padding: 9px 14px;
+  border: 0;
+  line-height: normal;
+  transition: background .25s ease, color .25s ease;
+}
+
+.dashboard-public-nav__link:hover,
+.dashboard-public-nav__link.h-navlink:hover {
+  border-color: transparent;
+  color: #4a58e0;
+  background: rgb(255 255 255 / 0.7);
+  transform: none;
+}
+
+.dashboard-public-nav__link.is-active {
+  border-color: transparent;
+  color: #4a4fd0;
+  background: rgb(255 255 255 / 0.72);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.dashboard-public-nav .navdd {
+  position: relative;
+}
+
+.dashboard-public-nav .ddmenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  padding-top: 11px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity .26s ease, transform .32s cubic-bezier(.22, .9, .28, 1), visibility .26s;
+}
+
+.dashboard-public-nav .navdd:hover .ddmenu,
+.dashboard-public-nav .navdd:focus-within .ddmenu {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+.dashboard-public-nav .navdd:hover .ddcaret,
+.dashboard-public-nav .navdd:focus-within .ddcaret {
+  transform: rotate(180deg);
+}
+
+.dashboard-public-nav .ddcaret {
+  transition: transform .3s ease;
+}
+
+.dashboard-public-nav .ddpanel {
+  min-width: 236px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 20px;
+  background: rgb(255 255 255 / 0.86);
+  border: 1px solid rgb(255 255 255 / 0.95);
+  box-shadow: 0 28px 60px -22px rgb(55 65 120 / 0.6), inset 0 1px 0 rgb(255 255 255);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  backdrop-filter: blur(28px) saturate(190%);
+}
+
+.dashboard-public-nav .ddlink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 13px;
+  border-radius: 13px;
+  color: #2f3352;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background .25s ease, color .25s ease;
+}
+
+.dashboard-public-nav .ddlink:hover,
+.dashboard-public-nav .ddlink:focus-visible {
+  color: #4a4fd0;
+  background: rgb(120 132 255 / 0.13);
+}
+
+.dashboard-public-nav .ddlink svg {
+  opacity: 0;
+  transform: translateX(-5px);
+  transition: opacity .25s ease, transform .25s ease;
+}
+
+.dashboard-public-nav .ddlink:hover svg,
+.dashboard-public-nav .ddlink:focus-visible svg {
+  opacity: 1;
+  transform: none;
+}
+
+html[data-theme="dark"] .dashboard-public-nav__link {
+  border-color: transparent;
+  color: #c1c4d5;
+  background: transparent;
+}
+
+html[data-theme="dark"] .dashboard-public-nav__link:hover,
+html[data-theme="dark"] .dashboard-public-nav__link.h-navlink:hover {
+  border-color: #4b5070;
+  color: #f3f4fb;
+  background: #2b2d45;
+}
+
+html[data-theme="dark"] .dashboard-public-nav__link.is-active {
+  border-color: #596397;
+  color: #e9ecff;
+  background: #3d456c;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.2);
+}
+
+html[data-theme="dark"] .dashboard-public-nav .ddpanel {
+  background: #2b2d45;
+  border-color: #3b3e58;
+  box-shadow: 0 18px 42px rgb(0 0 0 / 0.36);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-theme="dark"] .dashboard-public-nav .ddlink {
+  color: #c1c4d5;
+}
+
+html[data-theme="dark"] .dashboard-public-nav .ddlink:hover,
+html[data-theme="dark"] .dashboard-public-nav .ddlink:focus-visible {
+  color: #f3f4fb;
+  background: #3d456c;
+}
+
+@media (max-width: 1040px) {
+  .dashboard-public-nav__link {
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 940px) {
+  .dashboard-public-nav {
+    position: relative;
+    top: auto;
+    left: auto;
+    order: 3;
+    flex: 1 0 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-top: 2px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    transform: none;
+  }
+
+  .dashboard-public-nav::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-public-nav {
+    margin-top: 0;
+    padding: 2px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-public-nav__link,
+  .dashboard-public-nav .ddmenu,
+  .dashboard-public-nav .ddcaret,
+  .dashboard-public-nav .ddlink,
+  .dashboard-public-nav .ddlink svg {
+    transition: none;
+  }
+}
+/* Keep the dashboard public nav visible when the public stylesheet's mobile helper is loaded. */
+.dashboard-topbar .dashboard-public-nav {
+  display: flex;
+}
+
+/* ============================================================================
+   PUBLIC TYPOGRAPHY PARITY — shared dashboard type system
+
+   The dashboard uses Montserrat for display text. Its interface copy uses
+   Poppins while keeping the hierarchy soft and readable
+   so dense admin work stays comfortable without changing the public pages.
+
+   Technical values intentionally keep their existing font-mono treatment
+   (IDs, timestamps, codes, and machine-readable input) for scanability.
+   ========================================================================== */
+
+body.school-admin-context {
+  --sdnb-font-body: 'Poppins', system-ui, sans-serif;
+  --sdnb-font-display: 'Montserrat', 'Poppins', system-ui, sans-serif;
+  --sdnb-font-small-heading: 'Montserrat', 'Poppins', system-ui, sans-serif;
+  --sdnb-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-family: var(--sdnb-font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body.school-admin-context .dashboard-topbar,
+body.school-admin-context .sdnb-dash {
+  font-family: var(--sdnb-font-body);
+}
+
+/* Normalize legacy utility faces without touching intentional monospace data. */
+body.school-admin-context .font-sans:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6),
+body.school-admin-context .font-serif:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6),
+body.school-admin-context .font-poppins:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6) {
+  font-family: var(--sdnb-font-body);
+}
+
+body.school-admin-context .font-mono {
+  font-family: var(--sdnb-font-mono);
+}
+
+/* Display face for every semantic heading, including dialog titles rendered in portals. */
+body.school-admin-context :is(h1, h2, h3, h4, h5, h6),
+body.school-admin-context [role="heading"] {
+  font-family: var(--sdnb-font-display);
+}
+
+body.school-admin-context h1 {
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+body.school-admin-context h2 {
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+body.school-admin-context :is(h3, h4, h5, h6) {
+  font-family: var(--sdnb-font-small-heading);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+}
+
+/* Dashboard interface copy: buttons, navigation, forms, tables, and states. */
+body.school-admin-context :is(
+  button,
+  input,
+  textarea,
+  select,
+  option,
+  optgroup,
+  table,
+  thead,
+  tbody,
+  th,
+  td,
+  label,
+  [role="button"],
+  [role="tab"],
+  [role="option"],
+  [role="alert"],
+  [role="status"]
+):not(.font-mono) {
+  font-family: var(--sdnb-font-body);
+}
+
+body.school-admin-context :is(
+  input,
+  textarea,
+  select,
+  button[role="combobox"],
+  [data-radix-select-trigger],
+  [data-slot="select-trigger"]
+):not(.font-mono) {
+  line-height: 1.45;
+}
+
+body.school-admin-context :is(input, textarea):not(.font-mono)::placeholder {
+  font-family: var(--sdnb-font-body);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+body.school-admin-context :is(
+  .admin-btn,
+  .admin-btn-action,
+  .admin-nav-pill,
+  .admin-segmented-control-item,
+  .admin-action-cluster-btn,
+  .admin-panel-primary-btn,
+  .attendance-header__action-btn,
+  .dashboard-public-nav__link,
+  .dashboard-nav-button,
+  .dashboard-nav-icon-button
+) {
+  font-family: var(--sdnb-font-body);
+  line-height: 1.25;
+}
+
+/* Keep the public display face and numeric rhythm for dashboard metrics. */
+body.school-admin-context :is(.admin-stat-card-value, .admin-stat-card__value) {
+  font-family: var(--sdnb-font-display);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+body.school-admin-context :is(
+  .admin-stat-card-label,
+  .admin-section-title,
+  .admin-form-label,
+  .admin-edit-field label,
+  .admin-nav-group-label
+) {
+  font-family: var(--sdnb-font-body);
+  line-height: 1.35;
+}
+
+body.school-admin-context .admin-stat-card-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+body.school-admin-context :is(.admin-table-shell, .admin-table-container) :is(th, td) {
+  line-height: 1.45;
+}
+
+body.school-admin-context :is(
+  .admin-panel-header-text h2,
+  .admin-form-section-title,
+  .admin-edit-section-header,
+  .admin-empty-state-title,
+  .admin-loading-title
+) {
+  font-family: var(--sdnb-font-display);
+}
+body.school-admin-context :is(
+  .admin-section-title,
+  .admin-form-section-title,
+  .admin-edit-section-header,
+  .admin-empty-state-title,
+  .admin-loading-title
+) {
+  font-family: var(--sdnb-font-small-heading);
+}
+
+/* Toasts, alerts, dialogs, and other portal content inherit the same system. */
+body.school-admin-context :is(
+  [data-radix-toast-viewport],
+  [data-radix-toast],
+  [data-sonner-toaster],
+  [data-sonner-toast],
+  [role="alert"],
+  [role="status"]
+) {
+  font-family: var(--sdnb-font-body);
+  line-height: 1.45;
 }

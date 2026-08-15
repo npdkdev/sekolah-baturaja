@@ -13,7 +13,7 @@ const AdminPageHeader = ({ title, subtitle, actions, children }) => {
           className="text-2xl md:text-3xl lg:text-4xl font-bold mb-1.5 tracking-tight"
           style={{
             color: 'hsl(var(--admin-text-primary))',
-            fontFamily: "'Plus Jakarta Sans', 'Archivo', system-ui, sans-serif",
+            fontFamily: "'Montserrat', 'Poppins', system-ui, sans-serif",
           }}
         >
           {title}

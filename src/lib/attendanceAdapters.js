@@ -71,7 +71,10 @@ export const getAttendanceErrorMessage = (error) => {
         return 'Absensi murid hari ini sudah tercatat.';
     }
     if (error?.code === '42501' || message.toLowerCase().includes('row-level security')) {
-        return 'Anda tidak memiliki akses untuk mencatat absensi murid ini.';
+        return 'Anda tidak memiliki akses untuk mencatat absensi ini.';
+    }
+    if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+        return 'Server absensi tidak dapat dihubungi. Periksa koneksi lalu coba lagi.';
     }
     return message || 'Absensi gagal dicatat.';
 };

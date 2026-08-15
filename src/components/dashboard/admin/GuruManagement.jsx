@@ -25,6 +25,7 @@ import { getStorageErrorMessage, resolveAvatarRecords, uploadAvatar } from '@/li
 import { getBirthdaysThisMonth } from '@/lib/birthdayUtils';
 import { useAuth } from '@/contexts/AuthContext';
 import { isAdminRole } from '@/lib/roles';
+import { labelStafRole } from '@/lib/staf';
 
 const AVAILABLE_ROLES = ['Pengajar', 'Pentashih', 'Staff Operasional', 'Tata Usaha', 'Admin'];
 
@@ -137,8 +138,8 @@ const GuruManagement = () => {
             'Alamat': guru.alamat || '-',
             'Tanggal Bergabung': guru.created_at ? new Date(guru.created_at).toLocaleDateString('id-ID') : '-',
             'Status': guru.status_guru || 'Belum Bersertifikat',
-            'Jabatan': guru.jabatan || '-',
-            'Role': guru.roles && guru.roles.length > 0 ? guru.roles.join(', ') : '-',
+            'Jabatan': labelStafRole(guru.jabatan || '-'),
+            'Role': guru.roles && guru.roles.length > 0 ? guru.roles.map((item) => ROLE_LABELS[item] || item).join(', ') : '-',
             'NUPTK': guru.nomor_induk_qiroati || '-',
             'Jenis Kelamin': guru.jenis_kelamin || '-',
             'Tanggal Lahir': guru.tanggal_lahir ? new Date(guru.tanggal_lahir).toLocaleDateString('id-ID') : '-',

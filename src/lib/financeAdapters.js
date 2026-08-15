@@ -14,6 +14,14 @@ export const expenseCategories = [
     'Lainnya'
 ];
 
+export const expensePaymentMethods = [
+    'Tunai',
+    'Transfer',
+    'QRIS',
+    'Debit/Kartu',
+    'Lainnya'
+];
+
 export const monthNames = [
     'Januari',
     'Februari',
@@ -81,6 +89,30 @@ export const getPeriodDateRange = ({ year, month = 'all' }) => {
     };
 };
 
+const isValidExpenseDate = (value) => {
+    const dateValue = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return false;
+    const [year, month, day] = dateValue.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+};
+
+export const getExpenseDateRange = ({ year, month = 'all', dateFrom = '', dateTo = '' }) => {
+    const start = String(dateFrom || '').trim();
+    const end = String(dateTo || '').trim();
+    if (!start && !end) return getPeriodDateRange({ year, month });
+
+    const startDate = start || end;
+    const endDate = end || start;
+    if (!isValidExpenseDate(startDate) || !isValidExpenseDate(endDate)) {
+        throw new Error('Rentang tanggal pengeluaran tidak valid.');
+    }
+    if (startDate > endDate) {
+        throw new Error('Tanggal mulai tidak boleh melewati tanggal akhir.');
+    }
+    return { startDate, endDate };
+};
+
 export const parseCurrencyAmount = (value) => {
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -94,15 +126,31 @@ export const parseCurrencyAmount = (value) => {
 
 export const formatRupiah = (value) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 
+const normalizeOptionalExpenseText = (value, label, maxLength) => {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) return null;
+    if ([...normalized].length > maxLength) {
+        throw new Error(`${label} terlalu panjang.`);
+    }
+    return normalized;
+};
+
 export const normalizeExpensePayload = (formData, userId) => {
     const dateValue = String(formData?.tanggal_pengeluaran || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue) || Number.isNaN(Date.parse(`${dateValue}T00:00:00`))) {
+    if (!isValidExpenseDate(dateValue)) {
         throw new Error('Tanggal pengeluaran wajib valid.');
     }
 
     const jumlah = parseCurrencyAmount(formData.jumlah);
     const kategori = String(formData.kategori || '').trim();
     const deskripsi = String(formData.deskripsi || '').trim();
+
+    const metode_pembayaran = normalizeOptionalExpenseText(formData.metode_pembayaran, 'Metode pembayaran', 40);
+    const catatan = normalizeOptionalExpenseText(formData.catatan, 'Catatan pengeluaran', 1000);
+    const bukti_url = normalizeOptionalExpenseText(formData.bukti_url, 'Bukti transaksi', 2000);
+    if (bukti_url && !/^(https?:\/\/|\/)/i.test(bukti_url)) {
+        throw new Error('Bukti transaksi harus berupa URL atau path file yang valid.');
+    }
 
     if (!kategori) {
         throw new Error('Kategori pengeluaran wajib diisi.');
@@ -117,14 +165,17 @@ export const normalizeExpensePayload = (formData, userId) => {
         kategori,
         deskripsi,
         jumlah,
+        metode_pembayaran,
+        catatan,
+        bukti_url,
         updated_by: userId || null
     };
 };
 
 // Expenses live under /api/payments/expenses — that is where the Go handler
 // mounts them, there is no top-level /api/expenses route.
-export const fetchExpensesByPeriod = async ({ year, month = 'all' }) => {
-    const { startDate, endDate } = getPeriodDateRange({ year, month });
+export const fetchExpensesByPeriod = async ({ year, month = 'all', dateFrom = '', dateTo = '' }) => {
+    const { startDate, endDate } = getExpenseDateRange({ year, month, dateFrom, dateTo });
     const params = new URLSearchParams({ date_from: startDate, date_to: endDate });
     const data = await apiClient.get(`/api/payments/expenses?${params.toString()}`);
     return data || [];
@@ -138,9 +189,37 @@ export const createExpense = async (formData, userId) => {
     return data;
 };
 
-export const updateExpense = async (id, formData, userId) => {
-    const { updated_by: _ignored, ...payload } = normalizeExpensePayload(formData, userId);
-    const data = await apiClient.put(`/api/payments/expenses/${id}`, payload);
+const expenseUpdateFields = [
+    'tanggal_pengeluaran',
+    'kategori',
+    'deskripsi',
+    'jumlah',
+    'metode_pembayaran',
+    'catatan',
+    'bukti_url'
+];
+
+export const buildExpenseUpdatePayload = (formData, previousExpense = {}) => {
+    const { updated_by: _ignored, ...normalized } = normalizeExpensePayload(formData);
+    return expenseUpdateFields.reduce((payload, field) => {
+        const next = normalized[field] ?? null;
+        const previous = previousExpense?.[field] ?? null;
+        const nextComparable = field === 'jumlah' ? Number(next) : String(next ?? '').trim();
+        const previousComparable = field === 'jumlah' ? Number(previous) : String(previous ?? '').trim();
+        if (nextComparable !== previousComparable) {
+            payload[field] = next === null ? '' : next;
+        }
+        return payload;
+    }, {});
+};
+
+export const updateExpense = async (id, formData, userId, previousExpense = null) => {
+    const payload = previousExpense ? buildExpenseUpdatePayload(formData, previousExpense) : (() => {
+        const { updated_by: _ignored, ...fullPayload } = normalizeExpensePayload(formData, userId);
+        return fullPayload;
+    })();
+    if (Object.keys(payload).length === 0) return previousExpense;
+    const data = await apiClient.patch(`/api/payments/expenses/${id}`, payload);
     notifyFinanceDataChanged({ type: 'expense', action: 'updated', id });
     return data;
 };
@@ -153,10 +232,14 @@ export const softDeleteExpense = async (id) => {
 
 // Totals are summed in Postgres now, so the client no longer pages through
 // every payment row. Returns the same shape the dashboards already read.
-export const fetchCashflowSummary = async ({ year, month = 'all' }) => {
+export const fetchCashflowSummary = async ({ year, month = 'all', dateFrom = '', dateTo = '' }) => {
     const selectedYear = Number(year);
     const params = new URLSearchParams({ year: String(selectedYear) });
     params.set('month', month === 'all' ? 'all' : String(Number(month)));
+    if (dateFrom || dateTo) {
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
+    }
 
     const summary = await apiClient.get(`/api/payments/cashflow?${params.toString()}`);
 
@@ -181,5 +264,10 @@ export const getFinanceErrorMessage = (error) => {
     if (message.includes('tanggal')) return 'Tanggal pengeluaran harus valid.';
     if (message.includes('kategori')) return 'Kategori pengeluaran wajib diisi.';
     if (message.includes('keterangan')) return 'Keterangan pengeluaran wajib diisi.';
+    if (message.includes('metode pembayaran')) return 'Metode pembayaran harus valid.';
+    if (message.includes('catatan')) return 'Catatan pengeluaran terlalu panjang.';
+    if (message.includes('bukti transaksi')) return 'Bukti transaksi harus berupa URL atau path file yang valid.';
+    if (message.includes('rentang') || message.includes('mulai')) return 'Periksa kembali rentang tanggal pengeluaran.';
+    if (message.includes('tidak berubah')) return 'Belum ada perubahan yang disimpan.';
     return message || 'Operasi keuangan gagal.';
 };

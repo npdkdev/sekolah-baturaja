@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { buildJakartaTimestamp, formatTimestamp, determineAttendanceStatus, calculateTimeDifference } from '@/utils/AttendanceStatusLogic';
 import AttendanceStatusIcon from './AttendanceStatusIcon';
 import { useAuth } from '@/contexts/AuthContext';
-import { isAdminRole } from '@/lib/roles';
+import { canManageRole } from '@/lib/roles';
 import { updateAttendance, createAttendance, markAttendanceAbsent } from '@/lib/attendanceAdapters';
 import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
@@ -17,8 +17,10 @@ const AttendanceDetailsModal = ({ isOpen, onClose, details, onSuccess }) => {
   const [timeInput, setTimeInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Admin and Guru can edit Waktu Hadir. Santri is strictly read-only.
-  const isAuthorized = role === 'guru' || isAdminRole(role);
+  // Correcting attendance is a back-office act, mirroring CanManage on the Go
+  // side. Guru reads their own record here but records are only ever written by
+  // the RFID kiosk or corrected by admin/tata usaha from the recap panel.
+  const isAuthorized = canManageRole(role);
 
   useEffect(() => {
     if (details) {

@@ -19,12 +19,16 @@ export const SEBUTAN_PERAN = {
   'Tata Usaha': 'Tata Usaha',
 };
 
+export const labelStafRole = (value) => String(value ?? '')
+  .trim()
+  .replace(/\bpentashih\b/gi, 'Wakil Kepala Sekolah');
+
 /** Sebutan yang ditampilkan: jabatan bila ada, kalau tidak jatuh ke perannya. */
 export const sebutanStaf = (guru) => {
-  const jabatan = String(guru?.jabatan || '').trim();
+  const jabatan = labelStafRole(guru?.jabatan);
   if (jabatan) return jabatan;
   const peran = (Array.isArray(guru?.roles) ? guru.roles : []).find(Boolean);
-  return SEBUTAN_PERAN[peran] || peran || 'Staf sekolah';
+  return labelStafRole(SEBUTAN_PERAN[peran] || peran || 'Staf sekolah');
 };
 
 /**

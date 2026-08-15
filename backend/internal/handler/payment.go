@@ -56,6 +56,7 @@ func (h *PaymentHandler) Routes() http.Handler {
 		r.Get("/", h.ListExpenses)
 		r.Post("/", h.CreateExpense)
 		r.Put("/{id}", h.UpdateExpense)
+		r.Patch("/{id}", h.UpdateExpense)
 		r.Delete("/{id}", h.DeleteExpense)
 	})
 
@@ -772,7 +773,7 @@ func (h *PaymentHandler) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	// Date and timestamp columns are cast to text: pgx v5 refuses to scan
 	// date/timestamptz into *string, and these are read into string fields.
 	// WHERE still filters the real date column, so range comparisons stay typed.
-	base := `SELECT id, tanggal_pengeluaran::text, kategori, deskripsi, jumlah, bukti_url,
+	base := `SELECT id, tanggal_pengeluaran::text, kategori, deskripsi, jumlah, metode_pembayaran, catatan, bukti_url,
 	                created_by, created_at::text, updated_at::text, deleted_at::text
 	         FROM expenses WHERE deleted_at IS NULL`
 	args := []any{}
@@ -812,6 +813,8 @@ func (h *PaymentHandler) ListExpenses(w http.ResponseWriter, r *http.Request) {
 		Kategori           *string `json:"kategori"`
 		Deskripsi          *string `json:"deskripsi"`
 		Jumlah             float64 `json:"jumlah"`
+		MetodePembayaran   *string `json:"metode_pembayaran"`
+		Catatan            *string `json:"catatan"`
 		BuktiURL           *string `json:"bukti_url"`
 		CreatedBy          *string `json:"created_by"`
 		CreatedAt          string  `json:"created_at"`
@@ -823,7 +826,7 @@ func (h *PaymentHandler) ListExpenses(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var e expenseRow
 		if err := rows.Scan(&e.ID, &e.TanggalPengeluaran, &e.Kategori, &e.Deskripsi,
-			&e.Jumlah, &e.BuktiURL, &e.CreatedBy, &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt); err != nil {
+			&e.Jumlah, &e.MetodePembayaran, &e.Catatan, &e.BuktiURL, &e.CreatedBy, &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt); err != nil {
 			jsonError(w, "gagal membaca data", http.StatusInternalServerError)
 			return
 		}
@@ -862,10 +865,12 @@ func (h *PaymentHandler) CreateExpense(w http.ResponseWriter, r *http.Request) {
 	var id string
 	var createdAt string
 	err = h.db.QueryRow(r.Context(), `
-		INSERT INTO expenses (tanggal_pengeluaran, kategori, deskripsi, jumlah, created_by, updated_by)
-		VALUES ($1,$2,$3,$4,$5,$5)
+		INSERT INTO expenses (tanggal_pengeluaran, kategori, deskripsi, jumlah, metode_pembayaran, catatan, bukti_url, created_by, updated_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
 		RETURNING id, created_at::text
-	`, body.TanggalPengeluaran, body.Kategori, body.Deskripsi, body.Jumlah, callerID).Scan(&id, &createdAt)
+	`, body.TanggalPengeluaran, body.Kategori, body.Deskripsi, body.Jumlah,
+		expenseTextArg(body.MetodePembayaran), expenseTextArg(body.Catatan), expenseTextArg(body.BuktiURL),
+		callerID).Scan(&id, &createdAt)
 	if err != nil {
 		jsonError(w, fmt.Sprintf("gagal menyimpan pengeluaran: %v", err), http.StatusInternalServerError)
 		return
@@ -879,20 +884,117 @@ func (h *PaymentHandler) CreateExpense(w http.ResponseWriter, r *http.Request) {
 		"kategori":            body.Kategori,
 		"deskripsi":           body.Deskripsi,
 		"jumlah":              body.Jumlah,
+		"metode_pembayaran":   body.MetodePembayaran,
+		"catatan":             body.Catatan,
+		"bukti_url":           body.BuktiURL,
 		"created_at":          createdAt,
 	}})
 }
 
-// expenseInput is shared by CreateExpense and UpdateExpense. Field names match
-// the expenses table columns.
+// expenseInput is used for create requests and the normalized final state of
+// an update. Field names match the expenses table columns.
 type expenseInput struct {
 	TanggalPengeluaran string  `json:"tanggal_pengeluaran"`
 	Kategori           *string `json:"kategori"`
 	Deskripsi          *string `json:"deskripsi"`
 	Jumlah             float64 `json:"jumlah"`
+	MetodePembayaran   *string `json:"metode_pembayaran"`
+	Catatan            *string `json:"catatan"`
+	BuktiURL           *string `json:"bukti_url"`
 }
 
 const maxExpenseAmount = 9999999999.99
+
+const (
+	maxExpenseMethodLength = 40
+	maxExpenseNoteLength   = 1000
+	maxExpenseProofLength  = 2000
+)
+
+type expenseUpdateInput struct {
+	TanggalPengeluaran *string  `json:"tanggal_pengeluaran"`
+	Kategori           *string  `json:"kategori"`
+	Deskripsi          *string  `json:"deskripsi"`
+	Jumlah             *float64 `json:"jumlah"`
+	MetodePembayaran   *string  `json:"metode_pembayaran"`
+	Catatan            *string  `json:"catatan"`
+	BuktiURL           *string  `json:"bukti_url"`
+}
+
+type expenseRecord struct {
+	TanggalPengeluaran string
+	Kategori           *string
+	Deskripsi          *string
+	Jumlah             float64
+	MetodePembayaran   *string
+	Catatan            *string
+	BuktiURL           *string
+}
+
+func expenseTextArg(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func normalizeExpenseText(value *string, label string, maxLength int) (*string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if len([]rune(trimmed)) > maxLength {
+		return nil, fmt.Errorf("%s terlalu panjang", label)
+	}
+	return &trimmed, nil
+}
+
+func hasExpenseUpdateFields(body expenseUpdateInput) bool {
+	return body.TanggalPengeluaran != nil ||
+		body.Kategori != nil ||
+		body.Deskripsi != nil ||
+		body.Jumlah != nil ||
+		body.MetodePembayaran != nil ||
+		body.Catatan != nil ||
+		body.BuktiURL != nil
+}
+
+func mergeExpenseUpdate(current expenseRecord, update expenseUpdateInput) expenseInput {
+	merged := expenseInput{
+		TanggalPengeluaran: current.TanggalPengeluaran,
+		Kategori:           current.Kategori,
+		Deskripsi:          current.Deskripsi,
+		Jumlah:             current.Jumlah,
+		MetodePembayaran:   current.MetodePembayaran,
+		Catatan:            current.Catatan,
+		BuktiURL:           current.BuktiURL,
+	}
+	if update.TanggalPengeluaran != nil {
+		merged.TanggalPengeluaran = *update.TanggalPengeluaran
+	}
+	if update.Kategori != nil {
+		merged.Kategori = update.Kategori
+	}
+	if update.Deskripsi != nil {
+		merged.Deskripsi = update.Deskripsi
+	}
+	if update.Jumlah != nil {
+		merged.Jumlah = *update.Jumlah
+	}
+	if update.MetodePembayaran != nil {
+		merged.MetodePembayaran = update.MetodePembayaran
+	}
+	if update.Catatan != nil {
+		merged.Catatan = update.Catatan
+	}
+	if update.BuktiURL != nil {
+		merged.BuktiURL = update.BuktiURL
+	}
+	return merged
+}
 
 // normalizeExpenseInput keeps the API contract aligned with the expenses
 // table before any SQL is executed. The UI already validates these fields, but
@@ -921,10 +1023,28 @@ func normalizeExpenseInput(body expenseInput) (expenseInput, error) {
 	body.Kategori = &kategori
 	body.Deskripsi = &deskripsi
 	body.Jumlah = math.Round(body.Jumlah*100) / 100
+
+	var err error
+	if body.MetodePembayaran, err = normalizeExpenseText(body.MetodePembayaran, "metode pembayaran", maxExpenseMethodLength); err != nil {
+		return expenseInput{}, err
+	}
+	if body.Catatan, err = normalizeExpenseText(body.Catatan, "catatan pengeluaran", maxExpenseNoteLength); err != nil {
+		return expenseInput{}, err
+	}
+	if body.BuktiURL, err = normalizeExpenseText(body.BuktiURL, "bukti transaksi", maxExpenseProofLength); err != nil {
+		return expenseInput{}, err
+	}
+	if body.BuktiURL != nil {
+		proof := strings.ToLower(*body.BuktiURL)
+		if !strings.HasPrefix(proof, "https://") && !strings.HasPrefix(proof, "http://") && !strings.HasPrefix(proof, "/") {
+			return expenseInput{}, fmt.Errorf("bukti transaksi harus berupa URL atau path file yang valid")
+		}
+	}
 	return body, nil
 }
 
-// UpdateExpense PUT /api/payments/expenses/:id (admin only)
+// UpdateExpense PUT/PATCH /api/payments/expenses/:id (admin only).
+// PATCH accepts only the fields being changed and preserves all other values.
 func (h *PaymentHandler) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 	if !middleware.CanManage(middleware.RoleFromCtx(r.Context())) {
 		jsonError(w, "forbidden", http.StatusForbidden)
@@ -937,37 +1057,91 @@ func (h *PaymentHandler) UpdateExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body expenseInput
+	var body expenseUpdateInput
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, "request tidak valid", http.StatusBadRequest)
 		return
 	}
-	body, err := normalizeExpenseInput(body)
+	if !hasExpenseUpdateFields(body) {
+		jsonError(w, "minimal satu field pengeluaran harus diubah", http.StatusBadRequest)
+		return
+	}
+
+	var current expenseRecord
+	err := h.db.QueryRow(r.Context(), `
+		SELECT tanggal_pengeluaran::text, kategori, deskripsi, jumlah, metode_pembayaran, catatan, bukti_url
+		FROM expenses
+		WHERE id = $1 AND deleted_at IS NULL
+	`, id).Scan(
+		&current.TanggalPengeluaran, &current.Kategori, &current.Deskripsi, &current.Jumlah,
+		&current.MetodePembayaran, &current.Catatan, &current.BuktiURL,
+	)
+	if err == pgx.ErrNoRows {
+		jsonError(w, "pengeluaran tidak ditemukan", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		jsonError(w, "gagal membaca pengeluaran", http.StatusInternalServerError)
+		return
+	}
+
+	merged, err := normalizeExpenseInput(mergeExpenseUpdate(current, body))
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	updates := []string{}
+	args := []any{id}
+	appendUpdate := func(column string, value any) {
+		args = append(args, value)
+		updates = append(updates, fmt.Sprintf("%s = $%d", column, len(args)))
+	}
+	if body.TanggalPengeluaran != nil {
+		appendUpdate("tanggal_pengeluaran", merged.TanggalPengeluaran)
+	}
+	if body.Kategori != nil {
+		appendUpdate("kategori", expenseTextArg(merged.Kategori))
+	}
+	if body.Deskripsi != nil {
+		appendUpdate("deskripsi", expenseTextArg(merged.Deskripsi))
+	}
+	if body.Jumlah != nil {
+		appendUpdate("jumlah", merged.Jumlah)
+	}
+	if body.MetodePembayaran != nil {
+		appendUpdate("metode_pembayaran", expenseTextArg(merged.MetodePembayaran))
+	}
+	if body.Catatan != nil {
+		appendUpdate("catatan", expenseTextArg(merged.Catatan))
+	}
+	if body.BuktiURL != nil {
+		appendUpdate("bukti_url", expenseTextArg(merged.BuktiURL))
+	}
+	appendUpdate("updated_by", nullableUserID(r))
+
 	tag, err := h.db.Exec(r.Context(), `
-		UPDATE expenses
-		SET tanggal_pengeluaran = $2, kategori = $3, deskripsi = $4, jumlah = $5, updated_by = $6
+		UPDATE expenses SET `+strings.Join(updates, ", ")+`
 		WHERE id = $1 AND deleted_at IS NULL
-	`, id, body.TanggalPengeluaran, body.Kategori, body.Deskripsi, body.Jumlah, nullableUserID(r))
+	`, args...)
 	if err != nil {
 		jsonError(w, fmt.Sprintf("gagal memperbarui pengeluaran: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if tag.RowsAffected() == 0 {
-		jsonError(w, "pengeluaran tidak ditemukan", http.StatusNotFound)
+		jsonError(w, "pengeluaran tidak berubah", http.StatusConflict)
 		return
 	}
 
 	jsonData(w, map[string]any{
 		"id":                  id,
-		"tanggal_pengeluaran": body.TanggalPengeluaran,
-		"kategori":            body.Kategori,
-		"deskripsi":           body.Deskripsi,
-		"jumlah":              body.Jumlah,
+		"tanggal_pengeluaran": merged.TanggalPengeluaran,
+		"kategori":            merged.Kategori,
+		"deskripsi":           merged.Deskripsi,
+		"jumlah":              merged.Jumlah,
+		"metode_pembayaran":   merged.MetodePembayaran,
+		"catatan":             merged.Catatan,
+		"bukti_url":           merged.BuktiURL,
 	})
 }
 
@@ -1204,6 +1378,33 @@ func cashflowDateRange(year int, month *int) (string, string) {
 		fmt.Sprintf("%04d-%02d-01", endYear, endMonth)
 }
 
+func cashflowCustomDateRange(from, to string) (string, string, error) {
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	if from == "" && to == "" {
+		return "", "", nil
+	}
+	if from == "" {
+		from = to
+	}
+	if to == "" {
+		to = from
+	}
+
+	start, err := time.Parse("2006-01-02", from)
+	if err != nil {
+		return "", "", fmt.Errorf("tanggal mulai tidak valid")
+	}
+	end, err := time.Parse("2006-01-02", to)
+	if err != nil {
+		return "", "", fmt.Errorf("tanggal akhir tidak valid")
+	}
+	if start.After(end) {
+		return "", "", fmt.Errorf("tanggal mulai tidak boleh melewati tanggal akhir")
+	}
+	return from, end.AddDate(0, 0, 1).Format("2006-01-02"), nil
+}
+
 // Cashflow GET /api/payments/cashflow?year=&month=  (admin only)
 // month is omitted or "all" for a whole-year total. Sums are computed in
 // Postgres so the client never has to page through every row.
@@ -1236,6 +1437,15 @@ func (h *PaymentHandler) Cashflow(w http.ResponseWriter, r *http.Request) {
 	// no timezone, so the browser's local year/month maps directly to these
 	// half-open calendar bounds without UTC conversion.
 	startDate, endDate := cashflowDateRange(year, month)
+	dateFrom := r.URL.Query().Get("date_from")
+	dateTo := r.URL.Query().Get("date_to")
+	if dateFrom != "" || dateTo != "" {
+		startDate, endDate, err = cashflowCustomDateRange(dateFrom, dateTo)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 
 	var totalIn float64
 	var countIn int

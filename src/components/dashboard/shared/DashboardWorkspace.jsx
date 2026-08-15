@@ -203,7 +203,7 @@ const DashboardWorkspace = ({ title, subtitle, tabs }) => {
       <div className="sdnb-dash__orb sdnb-dash__orb--b" aria-hidden="true" />
       <div className="sdnb-dash__orb sdnb-dash__orb--c" aria-hidden="true" />
 
-      <div className="sdnb-dash__content max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 pt-20">
+      <div className="sdnb-dash__content max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 pt-8 sm:pt-10">
 
       {/* Global Search Section — below navbar */}
       <div className="mb-6">
