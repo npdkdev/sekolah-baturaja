@@ -60,21 +60,17 @@ func (h *GamificationHandler) IncrementPoints(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Coba RPC dulu; fallback ke UPDATE langsung.
+	// RPC increment_santri_points sudah tidak ada: ia menolak setiap panggilan
+	// karena auth.uid() selalu null di luar Supabase, sehingga cabang inilah
+	// yang selalu dipakai. Otorisasi ditegakkan RequireRole di router.
 	var newPoints int
 	err := h.db.QueryRow(r.Context(), `
-		SELECT increment_santri_points($1, $2)
-	`, body.SantriID, amount).Scan(&newPoints)
+		UPDATE santri SET points = points + $1 WHERE id = $2
+		RETURNING points
+	`, amount, body.SantriID).Scan(&newPoints)
 	if err != nil {
-		// Fallback: UPDATE langsung.
-		err = h.db.QueryRow(r.Context(), `
-			UPDATE santri SET points = points + $1 WHERE id = $2
-			RETURNING points
-		`, amount, body.SantriID).Scan(&newPoints)
-		if err != nil {
-			jsonError(w, "gagal menambah poin", http.StatusInternalServerError)
-			return
-		}
+		jsonError(w, "gagal menambah poin", http.StatusInternalServerError)
+		return
 	}
 
 	_ = middleware.RoleFromCtx(r.Context()) // sudah divalidasi oleh RequireRole

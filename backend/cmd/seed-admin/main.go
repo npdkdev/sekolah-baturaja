@@ -28,15 +28,15 @@ func main() {
 		log.Fatalf("hash: %v", err)
 	}
 
-	// Insert into auth.users stub first (FK target)
+	// Insert into auth_users stub first (FK target)
 	var adminID string
 	err = pool.QueryRow(context.Background(), `
-		INSERT INTO auth.users (email) VALUES ($1)
+		INSERT INTO auth_users (email) VALUES ($1)
 		ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
 		RETURNING id
 	`, email).Scan(&adminID)
 	if err != nil {
-		log.Fatalf("auth.users: %v", err)
+		log.Fatalf("auth_users: %v", err)
 	}
 
 	// Insert/update guru

@@ -64,7 +64,7 @@ var santriInsertable = map[string]bool{
 }
 
 // santriCreatable is santriInsertable plus id, which insertSantriTx sets itself
-// from the freshly created auth.users row. id stays out of santriInsertable so
+// from the freshly created auth_users row. id stays out of santriInsertable so
 // the shared Update path can never rewrite a primary key.
 var santriCreatable = func() map[string]bool {
 	m := make(map[string]bool, len(santriInsertable)+1)
@@ -303,7 +303,7 @@ func (h *SantriHandler) BulkCreate(w http.ResponseWriter, r *http.Request) {
 
 	created := make([]map[string]any, 0, len(body))
 	for _, rec := range body {
-		// insertSantriTx also creates the auth.users + user_profiles rows that
+		// insertSantriTx also creates the auth_users + user_profiles rows that
 		// santri.id references, and hashes the password itself.
 		item, err := insertSantriTx(r.Context(), tx, rec)
 		if err != nil {
@@ -562,8 +562,8 @@ func (h *SantriHandler) insertSantri(ctx context.Context, body map[string]any) (
 	return item, nil
 }
 
-// insertSantriTx creates the auth.users row, the user_profiles role row, and the
-// santri profile. santri.id is a FK onto auth.users(id), so the identity row has
+// insertSantriTx creates the auth_users row, the user_profiles role row, and the
+// santri profile. santri.id is a FK onto auth_users(id), so the identity row has
 // to exist first — this is the local replacement for what Supabase Auth used to
 // do out-of-band in the manage-user edge function.
 func insertSantriTx(ctx context.Context, tx pgx.Tx, body map[string]any) (map[string]any, error) {
@@ -591,14 +591,14 @@ func insertSantriTx(ctx context.Context, tx pgx.Tx, body map[string]any) (map[st
 
 	var newID string
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO auth.users (email) VALUES ($1) RETURNING id`, emailArg).Scan(&newID); err != nil {
+		`INSERT INTO auth_users (email) VALUES ($1) RETURNING id`, emailArg).Scan(&newID); err != nil {
 		return nil, err
 	}
 
 	displayName := strings.TrimSpace(asString(profile["nama_lengkap"]))
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO user_profiles (id, role, display_name, email, status)
-		VALUES ($1, 'santri'::public.app_role, $2, $3, 'active')
+		VALUES ($1, 'santri'::app_role, $2, $3, 'active')
 	`, newID, displayName, emailArg); err != nil {
 		return nil, err
 	}

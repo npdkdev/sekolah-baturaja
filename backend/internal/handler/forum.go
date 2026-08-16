@@ -74,7 +74,7 @@ type forumAuthor struct {
 // when no profile row matches (trimmed and capped before use).
 //
 // The JWT subject is a santri.id or a guru.id depending on role; both reference
-// auth.users(id), which is what forum_*.author_id points at.
+// auth_users(id), which is what forum_*.author_id points at.
 func (h *ForumHandler) resolveAuthor(ctx context.Context, bodyName string) (forumAuthor, error) {
 	a := forumAuthor{
 		id:   middleware.UserIDFromCtx(ctx),

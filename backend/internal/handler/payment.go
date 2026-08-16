@@ -813,7 +813,7 @@ func (h *PaymentHandler) DeleteExpense(w http.ResponseWriter, r *http.Request) {
 }
 
 // nullableUserID returns the caller's id, or nil when there is none, so the
-// created_by/updated_by FKs to auth.users get NULL instead of an empty string.
+// created_by/updated_by FKs to auth_users get NULL instead of an empty string.
 func nullableUserID(r *http.Request) any {
 	if id := middleware.UserIDFromCtx(r.Context()); id != "" {
 		return id

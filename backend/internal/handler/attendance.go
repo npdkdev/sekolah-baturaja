@@ -913,15 +913,13 @@ func (h *AttendanceHandler) SelfCheckin(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// incrementPoints menambah 1 poin santri. Utamakan RPC increment_santri_points;
-// jika gagal, fallback ke UPDATE langsung. Best-effort, error di-swallow.
+// incrementPoints menambah 1 poin santri. Best-effort, error di-swallow.
+//
+// Dulu ini mencoba RPC increment_santri_points lebih dulu. RPC itu memeriksa
+// auth.uid(), yang selalu null di luar Supabase, jadi ia selalu melempar
+// AUTHENTICATION_REQUIRED dan UPDATE di bawahnyalah yang sebenarnya berjalan
+// sejak migrasi. Fungsinya sudah ikut hilang bersama skema era-Supabase.
 func incrementPoints(ctx context.Context, santriID string, pool *pgxpool.Pool) {
-	var newPoints int
-	err := pool.QueryRow(ctx, `SELECT increment_santri_points($1, 1)`, santriID).Scan(&newPoints)
-	if err == nil {
-		return
-	}
-	// Fallback: update langsung kolom points.
 	_, _ = pool.Exec(ctx, `UPDATE santri SET points = points + 1 WHERE id = $1`, santriID)
 }
 

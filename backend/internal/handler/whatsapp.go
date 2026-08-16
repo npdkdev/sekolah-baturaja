@@ -228,7 +228,7 @@ func (h *WhatsAppHandler) BulkDeactivateGroups(w http.ResponseWriter, r *http.Re
 }
 
 // actorID returns the JWT subject as a nullable uuid arg. created_by/updated_by
-// are FKs onto auth.users(id), so an empty string has to become NULL — same
+// are FKs onto auth_users(id), so an empty string has to become NULL — same
 // reason as the note in payment.go.
 func actorID(r *http.Request) *string {
 	id := middleware.UserIDFromCtx(r.Context())

@@ -54,9 +54,22 @@ Auth flows through `src/contexts/AuthContext.jsx`, which holds the JWT session a
 ### Backend (`backend/`)
 
 - Go: chi router, pgx v5, golang-jwt/jwt, bcrypt. Domain handlers in `backend/internal/handler/` (auth, santri, guru, classes, attendance, payment, academic, mmq, gamification, content, forum, whatsapp, mediaplayer, loginlogs, file, appconfig).
-- Postgres schema lives in `db/migrations/` (ordered SQL) plus `db/seed.sql`. `backend/docker-compose.yml` mounts both into the Postgres init phase.
-- The migrations still carry the original RLS policies; the Go layer enforces authorization in middleware — see `docs/migration/authz-spec.md`.
-- Never edit an applied migration — add a new one.
+- Postgres schema lives in `backend/internal/migrate/sql/` and is applied by the
+  app itself at startup (`migrate.Run`, embedded via `go:embed`). The app is the
+  only thing that migrates: on the platform the database and schema already
+  exist before the container runs and there is no Postgres init hook.
+- All SQL must be **unqualified** — no `public.`, `auth.`, `storage.`,
+  `extensions.`. Each app owns one schema inside a shared tenant database and
+  `search_path` resolves the names. A test enforces this.
+- The app role is not a superuser: no `CREATE EXTENSION`, no `CREATE ROLE`, no
+  new schemas.
+- A database built before this (schema in `public`, identity table at
+  `auth.users`) is **adopted**, not rebuilt: the baseline is recorded as already
+  applied and `0002` moves `auth.users` into the app's schema as `auth_users`.
+- `db/migrations/` + `backend/init/` are the historical Supabase-era path, kept
+  for the compose stack's first-boot seed. Never edit an applied migration —
+  add a new one.
+- See `docs/deploy/console-platform-template.md` for the platform contract.
 - File uploads go to local disk backed by a named Docker volume.
 
 ### UI System
@@ -73,7 +86,8 @@ src/hooks/                       — custom hooks (attendance, search, media)
 src/lib/                         — API client, adapters, utilities
 src/pages/                       — route-level page components
 backend/internal/handler/        — Go HTTP handlers per domain
-db/migrations/                   — ordered SQL migrations
+backend/internal/migrate/sql/    — schema the app applies at startup (embedded)
+db/migrations/                   — historical Supabase-era migrations
 db/seed.sql                      — demo seed data
 docs/migration/                  — auth/authz specs, DB extraction script
 docs/archive/supabase-era/       — historical reports (read-only)

@@ -17,6 +17,7 @@ import (
 	"lpq-backend/internal/db"
 	"lpq-backend/internal/handler"
 	"lpq-backend/internal/middleware"
+	"lpq-backend/internal/migrate"
 	"lpq-backend/internal/storage"
 )
 
@@ -34,6 +35,22 @@ func main() {
 		log.Fatalf("db: %v", err)
 	}
 	defer pool.Close()
+
+	// Skema dipasang sebelum satu permintaan pun dilayani. Fatal, bukan
+	// peringatan: aplikasi yang berjalan di atas skema yang belum lengkap akan
+	// gagal satu per satu di endpoint acak, dan itu jauh lebih sulit dibaca
+	// daripada menolak start.
+	//
+	// Anggaran waktunya sendiri, bukan ctx koneksi di atas: memasang skema dari
+	// nol jauh lebih lama daripada membuka koneksi, dan pemasangan pertama di
+	// mesin yang sibuk tidak boleh gagal hanya karena batas yang dipilih untuk
+	// pekerjaan lain.
+	migrateCtx, cancelMigrate := context.WithTimeout(context.Background(), 2*time.Minute)
+	err = migrate.Run(migrateCtx, pool)
+	cancelMigrate()
+	if err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
 
 	store := storage.New(cfg.UploadDir, cfg.FileSignKey(), cfg.MaxUploadBytes)
 

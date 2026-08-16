@@ -40,7 +40,7 @@ func (l *rateLimiter) allow(ctx context.Context, key string) bool {
 	}
 	var ok bool
 	err := l.db.QueryRow(ctx,
-		`SELECT public.consume_auth_throttle($1, $2, $3, $4)`,
+		`SELECT consume_auth_throttle($1, $2, $3, $4)`,
 		l.bucket, key, l.max, l.window,
 	).Scan(&ok)
 	if err != nil {
@@ -59,7 +59,7 @@ func (l *rateLimiter) reset(ctx context.Context, key string) {
 		key = "unknown"
 	}
 	if _, err := l.db.Exec(ctx,
-		`SELECT public.reset_auth_throttle($1, $2)`, l.bucket, key,
+		`SELECT reset_auth_throttle($1, $2)`, l.bucket, key,
 	); err != nil {
 		log.Printf("rate limit reset %s/%s: %v", l.bucket, key, err)
 	}

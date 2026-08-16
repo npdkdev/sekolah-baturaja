@@ -48,7 +48,7 @@ var guruEditable = map[string]bool{
 }
 
 // guruCreatable is guruEditable plus id, which Create supplies itself from the
-// auth.users insert (clients never choose it).
+// auth_users insert (clients never choose it).
 var guruCreatable = func() map[string]bool {
 	m := map[string]bool{"id": true}
 	for k, v := range guruEditable {
@@ -169,7 +169,7 @@ func (h *GuruHandler) Update(w http.ResponseWriter, r *http.Request) {
 	jsonData(w, item)
 }
 
-// POST /api/guru — creates the auth.users row, the user_profiles role row, and
+// POST /api/guru — creates the auth_users row, the user_profiles role row, and
 // the guru profile in one transaction. Replaces the Supabase manage-user edge
 // function: there is no separate auth service anymore, so the three inserts that
 // used to span Supabase Auth + Postgres are now a single local transaction.
@@ -243,14 +243,14 @@ func (h *GuruHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var newID string
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO auth.users (email) VALUES ($1) RETURNING id`, email).Scan(&newID); err != nil {
+		`INSERT INTO auth_users (email) VALUES ($1) RETURNING id`, email).Scan(&newID); err != nil {
 		jsonError(w, "gagal membuat akun: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO user_profiles (id, role, display_name, email, status)
-		VALUES ($1, $2::public.app_role, $3, $4, 'active')
+		VALUES ($1, $2::app_role, $3, $4, 'active')
 	`, newID, profileRole, nama, email); err != nil {
 		jsonError(w, "gagal membuat profil akun: "+err.Error(), http.StatusBadRequest)
 		return
